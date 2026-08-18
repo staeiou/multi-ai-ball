@@ -9,7 +9,7 @@ async function fillCustomProvider(page: import('@playwright/test').Page): Promis
   await page.selectOption('.provider-band select', 'custom')
   await page.fill('input[placeholder*="Base URL"]', STUB_BASE)
   await page.click('text=Load models')
-  await expect(page.locator('.model-option')).toHaveCount(5)
+  await expect(page.locator('.pick-col .model-row')).toHaveCount(5)
 }
 
 async function advanceToProvider(page: import('@playwright/test').Page, prompt: string): Promise<void> {
@@ -37,8 +37,10 @@ test.describe('mock provider flow', () => {
     await expect(page.locator('.step.active')).toHaveCount(1)
 
     // Stage 2 is now Provider & models: select first, then advance.
-    await page.check(`.model-option:has-text("stub-echo") input`)
-    await page.check(`.model-option:has-text("stub-uppercase") input`)
+    await page.click(`.pick-col .model-row:has-text("stub-echo")`)
+    await page.click(`.pick-col .model-row:has-text("stub-uppercase")`)
+    await expect(page.locator('.selected-col .model-row')).toHaveCount(2)
+    await expect(page.locator('.pick-col .model-row')).toHaveCount(3)
 
     await advanceModelsToReview(page)
     await expect(page.locator('button.run-button')).toBeEnabled()
@@ -96,7 +98,7 @@ test.describe('mock provider flow', () => {
     await page.click('text=Next →') // output
     await page.click('text=Next →') // provider & models
     await fillCustomProvider(page)
-    await page.check(`.model-option:has-text("stub-echo") input`)
+    await page.click(`.pick-col .model-row:has-text("stub-echo")`)
     await advanceModelsToReview(page)
     await expect(page.locator('button.run-button')).toBeEnabled()
     await page.click('button.run-button')
@@ -111,7 +113,7 @@ test.describe('mock provider flow', () => {
     await advanceToProvider(page, 'Flaky hello')
     await fillCustomProvider(page)
     // Already on Provider & models: choose the flaky model right here.
-    await page.check(`.model-option:has-text("stub-flaky") input`)
+    await page.click(`.pick-col .model-row:has-text("stub-flaky")`)
     await page.click('text=Next →') // run settings
     await page.fill('[data-field="retries"]', '2')
     await page.fill('[data-field="concurrency"]', '1')

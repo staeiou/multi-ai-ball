@@ -41,12 +41,12 @@ for (const live of LIVE_CASES) {
       const keyInput = page.locator('input[placeholder*="API key"]')
       await keyInput.fill(key!)
       await page.click('text=Load models')
-      await expect(page.locator('.model-option')).toHaveCountGreaterThan(0, { timeout: 30_000 })
+      await expect(page.locator('.pick-col .model-row').first()).toBeVisible({ timeout: 30_000 })
       await expect(page.locator('span', { hasText: /models loaded/ })).toBeVisible()
       await page.click('text=Next →') // models
 
       // Step 4: select the cheap model, exact id (variant suffixes excluded).
-      await page.check(`.model-option:has(.model-id:text-is("${live.model}")) input`)
+      await page.click(`.pick-col .model-row:has(.model-id:text-is("${live.model}"))`)
       await page.click('text=Next →') // run settings
       await page.click('text=Next →') // review & run
 

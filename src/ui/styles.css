@@ -1,4 +1,7 @@
 :root {
+  --splitter-width: 11px;
+  /* One width for the cost column on BOTH panes of the models stage. */
+  --cost-col: 172px;
   --bg: #f2f4f8;
   --card: #ffffff;
   --border: #dbe1ea;
@@ -406,20 +409,6 @@ textarea.input {
   background: var(--card);
 }
 
-.model-option {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  padding: 3px 6px;
-  border-radius: 5px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.model-option:hover {
-  background: var(--primary-soft);
-}
-
 .model-id {
   font-family: var(--mono);
   font-size: 13px;
@@ -446,27 +435,6 @@ textarea.input {
 .selected-list {
   display: grid;
   gap: 6px;
-}
-
-.selected-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 9px;
-  background: var(--primary-soft);
-}
-
-.selected-id {
-  font-family: var(--mono);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .params-grid {
@@ -501,15 +469,6 @@ textarea.input {
   align-items: center;
   flex-wrap: wrap;
   margin-top: 8px;
-}
-
-.budget-slider {
-  display: grid;
-  gap: 2px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-  margin-top: 6px;
 }
 
 /* --- structured outputs ---------------------------------------------------- */
@@ -917,11 +876,14 @@ textarea.input {
   border-top: 1px solid var(--border);
 }
 
-/* --- the two panes --- */
+/* --- the two panes (a transfer list) --- */
 
 .models-layout {
   flex: 1;
   min-height: 0;
+  /* Set inline by the splitter drag; this is only the pre-script default. */
+  grid-template-columns: 50% var(--splitter-width) 1fr;
+  gap: 0;
   /* Overrides the base rule's `align-items: start`, which sizes each pane to
      its content — a pane that is not stretched to the row height has no
      height for its list to scroll within. */
@@ -935,11 +897,24 @@ textarea.input {
   min-height: 0;
 }
 
-.pick-col .section-label,
-.selected-col .section-label,
-.pick-col .input,
-.model-filters {
+.pick-col > *,
+.selected-col > * {
   flex: none;
+}
+
+.pane-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.pane-head .section-label {
+  margin: 0;
+}
+
+.pane-head .minibtn {
+  margin-left: auto;
 }
 
 /* The wraps exist only to hand the list a height to scroll within: the pane
@@ -950,6 +925,7 @@ textarea.input {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  margin-top: 8px;
 }
 
 .models-stage .model-list {
@@ -961,23 +937,82 @@ textarea.input {
 .selected-list-wrap {
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 6px;
+  padding: 4px 6px;
   overflow: auto;
   background: var(--card);
 }
 
-.selected-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+/* One row template, both panes. The cost column is the same width on each
+   side so a chosen model can be compared against the ones left behind; the
+   arrow points at the pane the row would move to. */
+.model-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--cost-col) 16px;
+  align-items: center;
   gap: 8px;
+  width: 100%;
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.model-row.selected {
+  grid-template-columns: 16px minmax(0, 1fr) var(--cost-col);
+}
+
+.model-row:hover {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+}
+
+.model-row .model-cost {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+
+.model-arrow {
+  color: var(--muted);
+  text-align: center;
+  font-size: 13px;
+}
+
+.model-row:hover .model-arrow {
+  color: var(--primary);
+}
+
+.pane-splitter {
+  position: relative;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.pane-splitter::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--border);
+}
+
+.pane-splitter:hover::before,
+.pane-splitter:focus-visible::before {
+  width: 3px;
+  background: var(--primary);
 }
 
 .manual-row {
-  flex: none;
   display: flex;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .manual-row .input {
@@ -985,24 +1020,34 @@ textarea.input {
   min-width: 0;
 }
 
-.manual-row .btn {
-  flex: none;
+/* Button, slider and exact field on one line. */
+.budget-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
 }
 
-.selected-col .row,
-.selected-col .budget-slider {
+.budget-row .btn {
   flex: none;
+  white-space: nowrap;
+}
+
+.budget-slider-input {
+  flex: 1;
+  min-width: 70px;
+  padding: 0;
+}
+
+.budget-field {
+  flex: none;
+  width: 92px;
 }
 
 .quick-add-block {
-  flex: none;
-  margin-top: 10px;
-  padding-top: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
   border-top: 1px solid var(--border);
-}
-
-.quick-add-block .section-label {
-  margin-bottom: 4px;
 }
 
 /* --- results staleness notice ---------------------------------------------- */

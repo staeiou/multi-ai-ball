@@ -3,10 +3,11 @@
 // hooks, so this stage can be reasoned about — and tested — in isolation.
 //
 // Layout contract (shared with the rest of the app): nothing on the page
-// scrolls. This stage is a two-pane grid: the model list pane and the
-// selection pane each own their scroll region (flex:1; min-height:0; overflow
-// auto), and the provider band collapses to a one-line summary once models
-// are loaded.
+// scrolls. This stage is a transfer list — available models on the left,
+// selected on the right, a model on exactly one side at a time — split by a
+// draggable divider whose ratio persists. Each pane owns its scroll region
+// (flex:1; min-height:0; overflow auto), and the provider band collapses to a
+// one-line summary once models are loaded and a key is present.
 
 import { fetchModelList, fetchZdrModels } from '../data'
 import { enrichWithLiteLLMPricing } from '../../core/pricing'
@@ -16,7 +17,7 @@ import type { PersistedState } from '../../state'
 import { saveKey } from '../../state'
 import { h } from '../dom'
 import { modelsCacheKey, providerKeyRequired } from '../model'
-import { costSummary, estimateTotalRange, modelCost, sortByCost, type CostInputs } from '../costs'
+import { costSummary, modelCost, sortByCost, type CostInputs } from '../costs'
 
 export interface ModelsStageRead {
   state: PersistedState
@@ -58,6 +59,7 @@ function isFreeModel(state: PersistedState, model: ModelCatalogEntry): boolean {
 
 export function buildModelsStage(host: ModelsStageHost): ModelsStage {
   const bandOpen = { value: true }
+  let splitRatio = host.read().state.splitRatio
   const refs = {
     band: null as unknown as HTMLElement,
     bandHead: null as unknown as HTMLButtonElement,
@@ -75,11 +77,10 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
     modelSearch: null as unknown as HTMLInputElement,
     hideFreeModels: null as unknown as HTMLInputElement,
     modelList: null as unknown as HTMLDivElement,
-    /** Offers the search text as a model ID when nothing in the catalog
-     * matches it. A separate always-on "add by ID" input cost a whole row of
-     * a height-starved column to serve a rare case. */
-    addById: null as unknown as HTMLButtonElement,
+    manualId: null as unknown as HTMLInputElement,
+    manualAdd: null as unknown as HTMLButtonElement,
     budget: null as unknown as HTMLInputElement,
+    budgetField: null as unknown as HTMLInputElement,
     budgetFacts: null as unknown as HTMLSpanElement,
     addUnderBudget: null as unknown as HTMLButtonElement,
     clearSelection: null as unknown as HTMLButtonElement,
@@ -87,7 +88,6 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
     zdr: null as unknown as HTMLInputElement,
     zdrRow: null as unknown as HTMLLabelElement,
     quickChips: null as unknown as HTMLDivElement,
-    quickAddBlock: null as unknown as HTMLDivElement,
     listFacts: null as unknown as HTMLSpanElement,
     selectedFacts: null as unknown as HTMLSpanElement,
   }
@@ -149,30 +149,40 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
     renderBand()
   }
 
-  // --- model list ------------------------------------------------------------
+  // --- the two panes ---------------------------------------------------------
+  // A transfer list: every model is on exactly one side. Picking one moves it
+  // right, releasing one moves it left. Nothing is ever drawn twice, so the
+  // cost on a row is the only place that model's price appears.
 
-  function renderModels(): void {
+  function paneRow(id: string, side: 'available' | 'selected'): HTMLElement {
     const read = host.read()
-    const query = refs.modelSearch.value.trim()
-    const needle = query.toLowerCase()
+    const model = read.models.find(candidate => candidate.id === id)
+    const arrow = h('span', { class: 'model-arrow', 'aria-hidden': 'true' }, side === 'available' ? '→' : '←')
+    const label = h('span', { class: 'model-id' }, id)
+    // Same element, same width, both sides: the cost column is how a user
+    // compares what they picked against what they did not.
+    const cost = h('span', { class: 'model-cost' }, model ? costSummary(model, costInputs(read)) : 'cost unknown')
+    const row = h('button', {
+      class: `model-row ${side}`,
+      type: 'button',
+      title: side === 'available' ? `Add ${id}` : `Remove ${id}`,
+    }, ...(side === 'available' ? [label, cost, arrow] : [arrow, label, cost]))
+    row.addEventListener('click', () => selectModel(id, side === 'available'))
+    return row
+  }
+
+  function renderAvailable(): void {
+    const read = host.read()
+    const query = refs.modelSearch.value.trim().toLowerCase()
+    const chosen = new Set(read.state.selected)
     const list = sortByCost(
-      visibleModels().filter(m => !needle || m.id.toLowerCase().includes(needle)),
+      visibleModels().filter(m => !chosen.has(m.id) && (!query || m.id.toLowerCase().includes(query))),
       costInputs(read),
     )
 
-    // Add-by-ID appears only when the catalog cannot satisfy what was typed —
-    // a provider may serve a model its own list omits.
-    const known = read.models.some(m => m.id === query)
-    refs.addById.hidden = !query || known
-    refs.addById.textContent = `Add "${query}"`
-
-    // The count lives on the pane, not in the provider band: the band spends
+    // The count belongs on the pane, not in the provider band: the band spends
     // most of its life collapsed, which is exactly when the count matters.
-    refs.listFacts.textContent = read.models.length === 0
-      ? ''
-      : needle
-        ? `${list.length} of ${read.models.length}`
-        : `${read.models.length} available${read.state.zdr ? ' · ZDR only' : ''}`
+    refs.listFacts.textContent = read.models.length === 0 ? '' : String(list.length)
 
     refs.modelList.replaceChildren()
     if (list.length === 0) {
@@ -183,52 +193,27 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
       ))
       return
     }
-
-    const selectedIds = new Set(read.state.selected)
-    for (const m of list) {
-      refs.modelList.append(h('label', { class: 'model-option' },
-        h('input', { type: 'checkbox', checked: selectedIds.has(m.id) }),
-        h('span', { class: 'model-id' }, m.id),
-        h('span', { class: 'model-cost' }, costSummary(m, costInputs(read))),
-      ))
-    }
+    for (const m of list) refs.modelList.append(paneRow(m.id, 'available'))
   }
 
   function renderSelected(): void {
     const read = host.read()
     const ids = read.state.selected
-
-    // The money is stated ONCE per pane. A per-model price beside every chosen
-    // model repeated the number already on its row in the list, and the number
-    // a user actually wants after choosing is the total they are about to
-    // spend — which a column of per-model ranges never adds up for them.
-    const range = estimateTotalRange(costInputs(read))
-    refs.selectedFacts.textContent = ids.length === 0
-      ? ''
-      : range.high > 0
-        ? `${ids.length} · ~${usd(range.low)}–${usd(range.high)} per run`
-        : `${ids.length} · cost unknown`
+    refs.selectedFacts.textContent = ids.length ? String(ids.length) : ''
     refs.clearSelection.hidden = ids.length === 0
-    // Quick add is an empty-state aid; once there is a selection the height
-    // belongs to it.
-    refs.quickAddBlock.hidden = ids.length > 0
 
     if (ids.length === 0) {
-      refs.selected.replaceChildren(h('p', { class: 'muted small' }, 'Nothing selected yet — tick models in the list.'))
+      refs.selected.replaceChildren(h('p', { class: 'muted small' }, 'Nothing selected yet — pick models on the left.'))
       return
     }
-    refs.selected.replaceChildren(...ids.map(id => {
-      const remove = h('button', { class: 'minibtn danger', type: 'button', 'aria-label': `Remove ${id}` }, '×')
-      remove.addEventListener('click', () => {
-        const current = host.read()
-        current.state.selected = current.state.selected.filter(s => s !== id)
-        host.saveState()
-        renderSelected()
-        renderModels()
-        host.refresh()
-      })
-      return h('div', { class: 'selected-row' }, h('span', { class: 'selected-id' }, id), remove)
-    }))
+    refs.selected.replaceChildren(...ids.map(id => paneRow(id, 'selected')))
+  }
+
+  /** Both sides always move together: a model leaving one pane arrives in the
+   * other, so rendering one without the other shows it twice or not at all. */
+  function renderPanes(): void {
+    renderAvailable()
+    renderSelected()
   }
 
   function renderQuickChips(): void {
@@ -287,8 +272,7 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
       read.state.selected = read.state.selected.filter(s => s !== id)
     }
     host.saveState()
-    renderSelected()
-    renderModels()
+    renderPanes()
     host.refresh()
   }
 
@@ -330,8 +314,7 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
     } finally {
       host.saveState()
       renderBand()
-      renderModels()
-      renderSelected()
+      renderPanes()
       renderBudgetFacts()
       renderQuickChips()
       host.refresh()
@@ -352,7 +335,7 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
       host.write({ models: [...read.models, { id }] })
     }
     selectModel(id, true)
-    renderModels()
+    renderAvailable()
   }
 
   async function toggleZdr(enabled: boolean): Promise<void> {
@@ -372,8 +355,7 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
     }
     read.state.selected = read.state.selected.filter(id => visibleModels().some(model => model.id === id))
     host.saveState()
-    renderModels()
-    renderSelected()
+    renderPanes()
     renderQuickChips()
     renderBudgetFacts()
   }
@@ -414,8 +396,7 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
       host.saveState()
       openBand(true)
       renderBand()
-      renderModels()
-      renderSelected()
+      renderPanes()
       renderQuickChips()
       host.refresh()
     })
@@ -428,8 +409,7 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
         // the OLD server, and the run must not silently 404 against the new one.
         host.write({ models: [], modelsCarriedBy: '' })
         refs.loadFacts.textContent = 'Base URL changed — reload the model list.'
-        renderModels()
-        renderSelected()
+        renderPanes()
       }
       host.saveState()
       host.refresh()
@@ -464,16 +444,28 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
 
   function build(): HTMLElement {
     const read0 = host.read()
-    const modelSearch = h('input', { class: 'input', type: 'search', placeholder: 'Filter models — or type an exact ID to add one…' })
+    const modelSearch = h('input', { class: 'input', type: 'search', placeholder: 'Filter the loaded model list…' })
     const hideFreeModels = h('input', { type: 'checkbox' })
     hideFreeModels.checked = read0.state.hideFreeModels
     const modelList = h('div', { class: 'model-list' })
-    const addById = h('button', { class: 'btn', type: 'button' })
-    addById.hidden = true
-    const budget = h('input', { class: 'input', type: 'range', min: '0.001', max: '0.05', step: '0.0005' })
+    const manualId = h('input', { class: 'input', placeholder: 'Add any model by ID — works even if the list is empty' })
+    const manualAdd = h('button', { class: 'btn', type: 'button' }, 'Add')
+    const budget = h('input', { class: 'input budget-slider-input', type: 'range', min: '0.0005', max: '0.05', step: '0.0005' })
     budget.value = String(read0.state.budget)
+    // Slider and field are two views of one number: the slider to sweep, the
+    // field to type an exact figure the slider's step cannot land on.
+    const budgetField = h('input', { class: 'input budget-field', type: 'number', min: '0', max: '1', step: '0.0005' })
+    budgetField.value = String(read0.state.budget)
     const budgetFacts = h('span', { class: 'muted small' })
     const addUnderBudget = h('button', { class: 'btn', type: 'button' }, 'Add all under')
+    const splitter = h('div', {
+      class: 'pane-splitter',
+      role: 'separator',
+      'aria-orientation': 'vertical',
+      'aria-label': 'Resize the model panes',
+      tabindex: '0',
+      title: 'Drag to resize',
+    })
     const clearSelection = h('button', { class: 'minibtn', type: 'button' }, 'Clear')
     const selected = h('div', { class: 'selected-list' })
     const zdr = h('input', { type: 'checkbox' })
@@ -483,14 +475,13 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
     const quickChips = h('div', { class: 'chips' })
     const listFacts = h('span', { class: 'muted small' })
     const selectedFacts = h('span', { class: 'muted small' })
-    // Quick add is an empty-state aid: once models are chosen, the column's
-    // height belongs to the choices, not to the shortcuts for making them.
-    const quickAddBlock = h('div', { class: 'quick-add-block' }, quickChips)
 
     refs.modelSearch = modelSearch
     refs.hideFreeModels = hideFreeModels
     refs.modelList = modelList
-    refs.addById = addById
+    refs.manualId = manualId
+    refs.manualAdd = manualAdd
+    refs.budgetField = budgetField
     refs.budget = budget
     refs.budgetFacts = budgetFacts
     refs.addUnderBudget = addUnderBudget
@@ -501,7 +492,6 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
     refs.quickChips = quickChips
     refs.listFacts = listFacts
     refs.selectedFacts = selectedFacts
-    refs.quickAddBlock = quickAddBlock
 
     const bandState = h('span', { class: 'provider-band-state' })
     const bandHead = h('button', { class: 'provider-band-head', type: 'button' },
@@ -517,44 +507,40 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
     refs.band = band
     bandHead.addEventListener('click', () => openBand(!bandOpen.value))
 
-    modelSearch.addEventListener('input', () => renderModels())
+    modelSearch.addEventListener('input', () => renderAvailable())
     hideFreeModels.addEventListener('change', () => {
       const read = host.read()
       read.state.hideFreeModels = hideFreeModels.checked
       read.state.selected = read.state.selected.filter(id => visibleModels().some(model => model.id === id))
       host.saveState()
-      renderModels()
-      renderSelected()
+      renderPanes()
       renderQuickChips()
       renderBudgetFacts()
     })
-    modelList.addEventListener('change', ev => {
-      const input = (ev.target as HTMLElement).closest('input[type=checkbox]')
-      if (!input) return
-      const option = (input as HTMLElement).closest('.model-option')
-      if (!option) return
-      const id = option.querySelector('.model-id')?.textContent ?? ''
-      if (id) selectModel(id, (input as HTMLInputElement).checked)
+    manualAdd.addEventListener('click', () => {
+      addModelById(refs.manualId.value)
+      refs.manualId.value = ''
     })
-    const addSearchTermAsModel = (): void => {
-      addModelById(modelSearch.value)
-      modelSearch.value = ''
-      renderModels()
-    }
-    addById.addEventListener('click', addSearchTermAsModel)
-    modelSearch.addEventListener('keydown', ev => {
-      // Enter only ever means "add what I typed", and only when the catalog
-      // has nothing to offer for it — otherwise the search box is a filter.
-      if (ev.key === 'Enter' && !addById.hidden) {
+    manualId.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter') {
         ev.preventDefault()
-        addSearchTermAsModel()
+        addModelById(refs.manualId.value)
+        refs.manualId.value = ''
       }
     })
-    budget.addEventListener('input', () => {
-      host.read().state.budget = Number(budget.value)
+    const setBudget = (value: number, source: 'slider' | 'field'): void => {
+      const next = Number.isFinite(value) ? Math.max(0, value) : 0.005
+      host.read().state.budget = next
+      // Only the other control is rewritten. Echoing a clamped value back into
+      // the field mid-keystroke fights the person typing "0.02" one key at a
+      // time, so the field commits on change (blur/Enter) and is left alone.
+      if (source === 'field') budget.value = String(Math.min(0.05, next))
+      else budgetField.value = String(next)
       renderBudgetFacts()
       host.saveState()
-    })
+    }
+    budget.addEventListener('input', () => setBudget(Number(budget.value), 'slider'))
+    budgetField.addEventListener('change', () => setBudget(Number(budgetField.value), 'field'))
     addUnderBudget.addEventListener('click', () => {
       const read = host.read()
       const inputs = costInputs(read)
@@ -567,64 +553,93 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
         }
       }
       renderBudgetFacts()
-      renderModels()
+      renderAvailable()
       refs.budgetFacts.textContent = `added ${added}`
     })
     clearSelection.addEventListener('click', () => {
       const read = host.read()
       read.state.selected = []
       host.saveState()
-      renderSelected()
-      renderModels()
+      renderPanes()
       host.refresh()
     })
     zdr.addEventListener('change', () => void toggleZdr(zdr.checked))
 
+    const layout = h('div', { class: 'models-layout' },
+      h('div', { class: 'pick-col' },
+        h('div', { class: 'pane-head' }, h('p', { class: 'section-label' }, 'Available'), listFacts),
+        modelSearch,
+        h('div', { class: 'model-filters' },
+          h('label', { class: 'checkbox-row' }, hideFreeModels, ' Hide :free routes'),
+          zdrRow,
+          h('span', { class: 'muted small' }, ':batch always excluded'),
+        ),
+        h('div', { class: 'model-list-wrap' }, modelList),
+        h('div', { class: 'manual-row' }, manualId, manualAdd),
+      ),
+      splitter,
+      h('div', { class: 'selected-col' },
+        h('div', { class: 'pane-head' }, h('p', { class: 'section-label' }, 'Selected'), selectedFacts, clearSelection),
+        h('div', { class: 'selected-list-wrap' }, selected),
+        h('div', { class: 'budget-row' }, addUnderBudget, budget, budgetField, budgetFacts),
+        h('div', { class: 'quick-add-block' }, quickChips),
+      ),
+    )
+
+    // --- the splitter ---------------------------------------------------------
+    // The two panes serve opposite jobs depending on the run: a hundred-model
+    // shootout wants the left pane wide, a six-model sheet job wants the right.
+    // Rather than guess per mode, the divider is draggable and the ratio is
+    // remembered.
+    const applySplit = (ratio: number): void => {
+      splitRatio = Math.min(0.8, Math.max(0.2, ratio))
+      layout.style.gridTemplateColumns = `${(splitRatio * 100).toFixed(2)}% var(--splitter-width) 1fr`
+    }
+    const commitSplit = (): void => {
+      host.read().state.splitRatio = splitRatio
+      host.saveState()
+    }
+    applySplit(read0.state.splitRatio)
+
+    splitter.addEventListener('pointerdown', down => {
+      down.preventDefault()
+      const bounds = layout.getBoundingClientRect()
+      splitter.setPointerCapture(down.pointerId)
+      const onMove = (move: PointerEvent): void => applySplit((move.clientX - bounds.left) / bounds.width)
+      const onUp = (up: PointerEvent): void => {
+        splitter.releasePointerCapture(up.pointerId)
+        splitter.removeEventListener('pointermove', onMove)
+        splitter.removeEventListener('pointerup', onUp)
+        splitter.removeEventListener('pointercancel', onUp)
+        commitSplit()
+      }
+      splitter.addEventListener('pointermove', onMove)
+      splitter.addEventListener('pointerup', onUp)
+      splitter.addEventListener('pointercancel', onUp)
+    })
+    splitter.addEventListener('keydown', ev => {
+      if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return
+      ev.preventDefault()
+      applySplit(splitRatio + (ev.key === 'ArrowLeft' ? -0.02 : 0.02))
+      commitSplit()
+    })
+
     return h('section', { class: 'card stage-card models-stage' },
       h('div', { class: 'stage-heading' }, h('h2', {}, 'Provider & models')),
       band,
-      h('div', { class: 'models-layout' },
-        h('div', { class: 'pick-col' },
-          h('div', { class: 'pane-head' },
-            h('p', { class: 'section-label' }, 'Model list'),
-            listFacts,
-          ),
-          h('div', { class: 'list-toolbar' }, modelSearch, addById),
-          h('div', { class: 'model-filters' },
-            h('label', { class: 'checkbox-row' }, hideFreeModels, ' Hide :free routes'),
-            zdrRow,
-            h('span', { class: 'muted small' }, ':batch always excluded'),
-          ),
-          h('div', { class: 'model-list-wrap' }, modelList),
-        ),
-        h('div', { class: 'selected-col' },
-          h('div', { class: 'pane-head' },
-            h('p', { class: 'section-label' }, 'Selected'),
-            selectedFacts,
-            clearSelection,
-          ),
-          h('div', { class: 'selected-list-wrap' }, selected),
-          // One row, not three: a button, the slider it reads, and the count
-          // it would add. Each of these owned a full row of a column whose
-          // list had no height left.
-          h('div', { class: 'budget-row' }, addUnderBudget, budget, budgetFacts),
-          quickAddBlock,
-        ),
-      ),
+      layout,
     )
   }
 
   const el = build()
   renderBand()
-  renderModels()
-  renderSelected()
+  renderPanes()
   renderQuickChips()
   renderBudgetFacts()
 
   const sync = (): void => {
     renderBand()
-    renderModels()
-    renderSelected()
+    renderPanes()
     renderQuickChips()
     renderBudgetFacts()
     host.refresh()

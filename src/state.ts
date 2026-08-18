@@ -29,6 +29,9 @@ export interface PersistedState {
   budget: number
   /** OpenRouter's `:free` routes trade money for provider data use. Hidden by default. */
   hideFreeModels: boolean
+  /** Width of the available-models pane, 0..1 of the models stage. Additive
+   * field: an older stored state simply defaults it (no migration). */
+  splitRatio: number
   contract: ContractAuthoring
   placement: ContractPlacement
   parserId: string | null
@@ -54,6 +57,7 @@ export function defaultState(): PersistedState {
     concurrency: 6,
     budget: 0.005,
     hideFreeModels: true,
+    splitRatio: 0.5,
     contract: { fields: [], rationaleFirst: false, rationaleSpec: '', strictJson: true },
     placement: 'system-after',
     parserId: null,
