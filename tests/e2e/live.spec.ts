@@ -37,7 +37,7 @@ for (const live of LIVE_CASES) {
       await page.click('text=Next →') // provider
 
       // Step 3: provider + key, then load the real catalog.
-      await page.selectOption('.provider-card select', live.preset)
+      await page.selectOption('.provider-band select', live.preset)
       const keyInput = page.locator('input[placeholder*="API key"]')
       await keyInput.fill(key!)
       await page.click('text=Load models')

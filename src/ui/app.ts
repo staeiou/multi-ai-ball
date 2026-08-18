@@ -11,31 +11,38 @@ import './styles.css'
 
 import JSZip from 'jszip'
 
-import { fetchModelList, fetchZdrModels } from './data'
 import { buildPlan, parseSheetBytes } from '../core/cases'
 import type { SheetRow } from '../core/cases'
 import { buildContractContext, resolveContract } from '../core/contract'
 import { buildRows, download, fileStamp, toCSV, toJSONL, toXLSX, XLSX_MIME } from '../core/export'
-import { enrichWithLiteLLMPricing, estimateCostUsd, formatUsd } from '../core/pricing'
+import { estimateCostUsd, formatUsd } from '../core/pricing'
 import { buildBundleZip, ZIP_MIME } from '../core/py'
 import { BUILTIN_PARSERS } from '../core/parsers'
-import { presetById, PRESETS, QUICK_MODELS } from '../core/providers'
+import { presetById } from '../core/providers'
 import { buildRunSpecs, RunController } from '../core/run'
-import { countTokens, naiveTokenCount } from '../core/tokenizer'
+import { countTokens } from '../core/tokenizer'
 import { promptPlaceholderNames, renderPromptTemplate } from '../core/template'
 import type { CallResult, ContractField, ContractPlacement, ModelCatalogEntry, RunMeta, RunSpec } from '../core/types'
-import { defaultState, loadKey, loadRecent, loadState, loadTemplates, pushRecent, saveKey, saveState, saveTemplates, RECENT_KEY } from '../state'
+import { defaultState, loadKey, loadRecent, loadState, loadTemplates, pushRecent, saveState, saveTemplates, RECENT_KEY } from '../state'
 import type { PersistedState, RecentItem, SavedTemplate } from '../state'
 import { h } from './dom'
 import { ResultsGrid } from './grid'
+import type { AppSession } from './model'
+import { planFingerprint, stageGate } from './model'
+import { Wizard } from './wizard'
+import { buildModelsStage } from './stages/provider-models'
+import { estimateTotalRange, estimateTotalText, selectedModels, type CostInputs } from './costs'
 
 const persisted = loadState()
 const state: PersistedState = persisted
 
 let apiKey = loadKey(state.keyRemember)
 let models: ModelCatalogEntry[] = []
-let modelsLoadedFailed = ''
 let zdrIds = new Set<string>()
+/** The provider/base URL pair `models` was loaded for (model.ts cache rule). */
+let modelsCarriedBy = ''
+let resultsFingerprint: string | null = null
+let wizard: Wizard | null = null
 let sheetRows: SheetRow[] = []
 let templates = loadTemplates()
 let tokenEstimate = 0
@@ -54,14 +61,6 @@ const CONFIRM_THRESHOLD_USD = 0.5
 
 interface Refs {
   root: HTMLElement
-  preset: HTMLSelectElement
-  customBase: HTMLInputElement
-  keyInput: HTMLInputElement
-  remember: HTMLInputElement
-  loadModels: HTMLButtonElement
-  loadFacts: HTMLSpanElement
-  providerBand: HTMLDetailsElement
-  providerSummary: HTMLElement
   system: HTMLTextAreaElement
   prompt: HTMLTextAreaElement
   starters: HTMLDivElement
@@ -69,23 +68,11 @@ interface Refs {
   sheetInput: HTMLInputElement
   sheetFacts: HTMLSpanElement
   sheetPreview: HTMLDivElement
-  modelSearch: HTMLInputElement
-  hideFreeModels: HTMLInputElement
-  modelList: HTMLDivElement
-  manualId: HTMLInputElement
-  manualAdd: HTMLButtonElement
-  quickChips: HTMLDivElement
-  budget: HTMLInputElement
-  budgetFacts: HTMLSpanElement
-  addUnderBudget: HTMLButtonElement
-  selected: HTMLDivElement
   paramTemp: HTMLInputElement
   paramMax: HTMLInputElement
   paramTopP: HTMLInputElement
   stream: HTMLInputElement
   streamThreshold: HTMLInputElement
-  zdr: HTMLInputElement
-  zdrRow: HTMLLabelElement
   repeats: HTMLInputElement
   retries: HTMLInputElement
   concurrency: HTMLInputElement
@@ -112,6 +99,7 @@ interface Refs {
   exportPy: HTMLButtonElement
   newPrompt: HTMLButtonElement
   resultsGrid: HTMLDivElement
+  resultsStale: HTMLElement
   resultSearch: HTMLInputElement
   resultStatus: HTMLSelectElement
   reviewSummary: HTMLDivElement
@@ -125,6 +113,31 @@ interface Refs {
 }
 
 const refs = {} as Refs
+
+// The provider & models stage owns its whole subtree; the app only supplies
+// state access and refresh hooks (see stages/provider-models.ts).
+const modelsStage = buildModelsStage({
+  read: () => ({
+    state,
+    apiKey,
+    models,
+    zdrIds,
+    modelsCarriedBy,
+    tokenEstimate,
+    sheetRowCount: sheetRows.length,
+  }),
+  write: patch => {
+    if (patch.apiKey !== undefined) apiKey = patch.apiKey
+    if (patch.models !== undefined) models = patch.models
+    if (patch.zdrIds !== undefined) zdrIds = patch.zdrIds
+    if (patch.modelsCarriedBy !== undefined) modelsCarriedBy = patch.modelsCarriedBy
+  },
+  saveState: () => saveState(state),
+  refresh: () => {
+    wizard?.refresh()
+    updateRunButton()
+  },
+})
 
 // --- shell -------------------------------------------------------------------
 
@@ -168,12 +181,13 @@ function buildApp(): void {
     h('main', { class: 'app-main' },
       stepWrap(0, promptCard()),
       stepWrap(1, contractCard()),
-      stepWrap(2, modelsCard()),
+      stepWrap(2, modelsStage.el),
       stepWrap(3, settingsCard()),
       stepWrap(4, reviewCard()),
       stepWrap(5, resultsCard()),
       h('div', { class: 'wizard-buttons' },
         h('button', { class: 'btn', type: 'button' }, '← Back'),
+        h('p', { class: 'wizard-blocker', hidden: true }),
         h('button', { class: 'btn primary wizard-next', type: 'button' }, 'Next →'),
       ),
     ),
@@ -193,6 +207,18 @@ function buildApp(): void {
   backupBtn.addEventListener('click', () => void runBackup())
   restoreBtn.addEventListener('click', () => restoreInput.click())
   restoreInput.addEventListener('change', () => void runRestore())
+
+  wizard = new Wizard({
+    nav: wizardNav,
+    back: refs.wizardBack,
+    next: refs.wizardNext,
+    blocker: root.querySelector('.wizard-blocker') as HTMLElement,
+    gate: wizardGateForStep,
+    onStep: step => {
+      if (step === 4) renderReview()
+      if (step === 5) renderResultsStale()
+    },
+  })
 }
 
 function stepWrap(step: number, ...cards: HTMLElement[]): HTMLElement {
@@ -228,7 +254,7 @@ function promptCard(): HTMLElement {
   refs.starters = starters
 
   return h('section', { class: 'card stage-card' },
-    h('h2', {}, 'Prompt'),
+    h('div', { class: 'stage-heading' }, h('h2', {}, 'Prompt')),
     h('label', { class: 'field' }, h('span', {}, 'System prompt (optional)'), system),
     h('label', { class: 'field' }, h('span', {}, 'Prompt / template'), prompt),
     sourceTabs,
@@ -236,112 +262,6 @@ function promptCard(): HTMLElement {
     sheetFacts,
     sheetPreview,
     starters,
-  )
-}
-
-function modelsCard(): HTMLElement {
-  const modelSearch = h('input', { class: 'input', type: 'search', placeholder: 'Filter the loaded model list…' })
-  const hideFreeModels = h('input', { type: 'checkbox' })
-  hideFreeModels.checked = state.hideFreeModels
-  const modelList = h('div', { class: 'model-list' })
-  const quickChips = h('div', { class: 'chips' })
-  const manualId = h('input', { class: 'input', placeholder: 'Add any model by ID — works even if the list is empty' })
-  const manualAdd = h('button', { class: 'btn', type: 'button' }, 'Add')
-
-  // --- Provider & key band: same screen as model selection. Collapses once
-  // models are loaded (summary shows the live state) and re-expands on click.
-  const preset = h('select', { class: 'input' }, ...PRESETS.map(p => h('option', { value: p.id }, p.label)))
-  preset.value = state.presetId
-  const customBase = h('input', { class: 'input', placeholder: 'Base URL — e.g. http://localhost:8000 or https://your.llm.example' })
-  customBase.value = state.customBase
-  customBase.hidden = state.presetId !== 'custom'
-  const keyInput = h('input', { class: 'input', type: 'password', placeholder: presetById(state.presetId).keyLabel, autocomplete: 'new-password' })
-  keyInput.value = apiKey
-  const remember = h('input', { type: 'checkbox' })
-  remember.checked = state.keyRemember
-  const loadModels = h('button', { class: 'btn', type: 'button' }, 'Load models')
-  const loadFacts = h('span', { class: 'muted small' })
-  const providerSummary = h('span', { class: 'provider-summary', 'aria-hidden': 'true' })
-  const providerBand = h('details', { class: 'provider-band provider-card' },
-    h('summary', {}, h('span', { class: 'provider-band-label' }, 'Provider & key'), providerSummary),
-    h('div', { class: 'provider-band-body' },
-      h('div', { class: 'field-grid' },
-        h('label', { class: 'field' }, h('span', {}, 'Provider'), preset),
-        h('label', { class: 'field', hidden: customBase.hidden }, h('span', {}, 'Base URL'), customBase),
-        h('label', { class: 'field' }, h('span', {}, 'API key'), keyInput),
-      ),
-      h('label', { class: 'checkbox-row' }, remember, ' Remember key on this device (plaintext in localStorage — only on machines you trust)'),
-      h('div', { class: 'row' }, loadModels, loadFacts),
-    ),
-  )
-
-  const budget = h('input', { class: 'input', type: 'range', min: '0.001', max: '0.05', step: '0.0005' })
-  budget.value = String(state.budget)
-  const budgetFacts = h('span', { class: 'muted small' })
-  const addUnderBudget = h('button', { class: 'btn', type: 'button' }, 'Add all under budget')
-  const clearSelection = h('button', { class: 'btn ghost', type: 'button' }, 'Clear selection')
-
-  const selected = h('div', { class: 'selected-list' })
-
-  // ZDR is a routing filter, so it lives with the model filters: flipping it
-  // fetches the ZDR endpoint list, keeps only ZDR-capable selections, and
-  // hides everything else from the list.
-  const zdr = h('input', { type: 'checkbox' })
-  zdr.checked = state.zdr
-  const zdrRow = h('label', { class: 'checkbox-row' }, zdr, ' ZDR only (OpenRouter — hides and deselects models without ZDR)')
-  if (state.presetId !== 'openrouter') zdrRow.hidden = true
-
-  refs.modelSearch = modelSearch
-  refs.hideFreeModels = hideFreeModels
-  refs.modelList = modelList
-  refs.quickChips = quickChips
-  refs.budget = budget
-  refs.budgetFacts = budgetFacts
-  refs.addUnderBudget = addUnderBudget
-  refs.selected = selected
-  refs.zdr = zdr
-  refs.zdrRow = zdrRow
-  refs.manualId = manualId
-  refs.manualAdd = manualAdd
-  refs.preset = preset
-  refs.customBase = customBase
-  refs.keyInput = keyInput
-  refs.remember = remember
-  refs.loadModels = loadModels
-  refs.loadFacts = loadFacts
-  refs.providerBand = providerBand
-  refs.providerSummary = providerSummary
-  clearSelection.addEventListener('click', () => {
-    state.selected = []
-    saveState(state)
-    renderSelected()
-    renderModels()
-    updateRunButton()
-  })
-
-  return h('section', { class: 'card stage-card models-stage' },
-    h('div', { class: 'stage-heading' }, h('span', { class: 'eyebrow' }, 'Step 3'), h('h2', {}, 'Provider & models'), h('p', {}, 'Connect a provider, then pick the models to compare. The provider band collapses once models load — open it any time to switch.'),
-    ),
-    providerBand,
-    h('div', { class: 'models-layout' },
-      h('div', { class: 'pick-col' },
-        h('p', { class: 'section-label' }, 'Model list'),
-        modelSearch,
-        h('div', { class: 'model-filters' },
-          h('label', { class: 'checkbox-row' }, hideFreeModels, ' Hide OpenRouter :free routes (they may use your data)'),
-          zdrRow,
-          h('span', { class: 'muted small' }, ' :batch routes are always excluded'),
-        ),
-        modelList,
-        h('p', { class: 'section-label selected-heading' }, 'Selected models'),
-        selected,
-        h('div', { class: 'manual-row' }, manualId, manualAdd),
-        h('div', { class: 'row' }, addUnderBudget, clearSelection, budgetFacts),
-        h('label', { class: 'budget-slider' }, 'Budget (estimated $ per model per call)', budget),
-        h('p', { class: 'section-label' }, 'Quick add'),
-        quickChips,
-      ),
-    ),
   )
 }
 
@@ -394,8 +314,7 @@ function contractCard(): HTMLElement {
   refs.deleteTemplate = deleteTemplate
 
   return h('section', { class: 'card stage-card' },
-    h('div', { class: 'stage-heading' }, h('span', { class: 'eyebrow' }, 'Step 2'), h('h2', {}, 'Output format'), h('p', {}, 'Describe the response you need. The app asks for this format and exposes each returned field as a column.'),
-    ),
+    h('div', { class: 'stage-heading' }, h('h2', {}, 'Output format'), h('p', {}, 'Each field you describe becomes a column in the export.')),
     h('div', { class: 'field-table-head' }, h('span', {}, 'Field'), h('span', {}, 'Type'), h('span', {}, 'Details')),
     fields,
     h('div', { class: 'contract-options' },
@@ -425,8 +344,7 @@ function reviewCard(): HTMLElement {
 
   refs.reviewSummary = summary
   return h('section', { class: 'card stage-card review-stage' },
-    h('div', { class: 'stage-heading' }, h('span', { class: 'eyebrow' }, 'Step 5'), h('h2', {}, 'Review your run'), h('p', {}, 'Check the scope and estimate before sending anything to a provider.'),
-    ),
+    h('div', { class: 'stage-heading' }, h('h2', {}, 'Review your run'), h('p', {}, 'Nothing has been sent to a provider yet.')),
     summary,
     h('div', { class: 'review-action' }, run, estimate),
   )
@@ -435,10 +353,10 @@ function reviewCard(): HTMLElement {
 function renderReview(): void {
   const summary = refs.reviewSummary
   if (!summary) return
-  const selected = selectedModels()
+  const selected = selectedModels({ models, selected: state.selected })
   const caseCount = state.source.kind === 'sheet' ? sheetRows.length : 1
   const contract = buildContractContext(state.contract)
-  const range = computeEstimatedRange()
+  const range = estimateTotalRange(costInputs())
   summary.replaceChildren(
     h('div', { class: 'review-item' }, h('span', {}, 'Provider'), h('strong', {}, presetById(state.presetId).label)),
     h('div', { class: 'review-item' }, h('span', {}, 'Inputs'), h('strong', {}, state.source.kind === 'sheet' ? `${caseCount} spreadsheet rows` : 'One prompt')),
@@ -481,8 +399,7 @@ function settingsCard(): HTMLElement {
   refs.concurrency = concurrency
 
   return h('section', { class: 'card stage-card settings-stage' },
-    h('div', { class: 'stage-heading' }, h('span', { class: 'eyebrow' }, 'Step 4'), h('h2', {}, 'Run settings'), h('p', {}, 'Choose shared defaults. Each model receives only the settings it supports.'),
-    ),
+    h('div', { class: 'stage-heading' }, h('h2', {}, 'Run settings'), h('p', {}, 'Shared defaults — each model receives only the settings it supports.')),
     h('div', { class: 'settings-grid' },
       h('section', { class: 'settings-panel' }, h('h3', {}, 'Response settings'),
         h('label', { class: 'param-field' }, h('span', {}, 'Temperature'), paramTemp),
@@ -516,11 +433,13 @@ function resultsCard(): HTMLElement {
     h('option', { value: 'error' }, 'Failed'),
     h('option', { value: 'pending' }, 'In progress'),
   )
+  const resultsStale = h('p', { class: 'results-stale', hidden: true })
   const resultsGrid = h('div', { class: 'results-grid' },
     h('p', { class: 'muted' }, 'Run a prompt to see model-by-model answers here.'),
   )
 
   refs.facts = facts
+  refs.resultsStale = resultsStale
   refs.cancel = cancel
   refs.exportXlsx = exportXlsx
   refs.exportCsv = exportCsv
@@ -531,185 +450,61 @@ function resultsCard(): HTMLElement {
   refs.resultSearch = resultSearch
   refs.resultStatus = resultStatus
 
-  return h('section', { class: 'card' },
-    h('h2', {}, 'Results'),
+  return h('section', { class: 'card stage-card' },
+    h('div', { class: 'stage-heading' }, h('h2', {}, 'Results')),
+    resultsStale,
     h('div', { class: 'results-toolbar' }, facts, cancel, exportXlsx, exportCsv, exportJsonl, exportPy, newPrompt),
     h('div', { class: 'result-filters' }, resultSearch, resultStatus),
     resultsGrid,
   )
 }
 
-// --- renderers ----------------------------------------------------------------
+// --- derived state bridging (costs + gates) -----------------------------------
 
-function selectedModels(): ModelCatalogEntry[] {
-  return state.selected
-    .map(id => models.find(m => m.id === id))
-    .filter((m): m is ModelCatalogEntry => m !== undefined)
+function costInputs(): CostInputs {
+  return {
+    models,
+    selected: state.selected,
+    tokenEstimate,
+    prompt: state.prompt,
+    system: state.system,
+    params: state.params,
+    repeats: state.repeats,
+    caseCount: state.source.kind === 'sheet' ? Math.max(1, sheetRows.length) : 1,
+  }
 }
 
-function modelCost(m: ModelCatalogEntry): number | null {
-  if (!m.pricing) return null
-  // Budget/add-all must use the selected upper bound, not an arbitrary 512
-  // token fiction. The catalogue still shows the useful 10-token-to-max
-  // range below so a novice can see the uncertainty.
-  return estimateCostUsd(m.pricing, tokenEstimate || naiveTokenCount(state.prompt + state.system), state.params.maxTokens ?? ASSUMED_OUTPUT_TOKENS)
+function sessionSnapshot(): AppSession {
+  return { apiKey, models, zdrIds, sheetRowCount: sheetRows.length, tokenEstimate, modelsCarriedBy }
 }
 
-function modelCostRange(m: ModelCatalogEntry): { low: number; high: number } | null {
-  if (!m.pricing) return null
-  const input = tokenEstimate || naiveTokenCount(state.prompt + state.system)
-  const highTokens = state.params.maxTokens ?? ASSUMED_OUTPUT_TOKENS
-  const low = estimateCostUsd(m.pricing, input, Math.min(10, highTokens))
-  const high = estimateCostUsd(m.pricing, input, highTokens)
-  return low === null || high === null ? null : { low, high }
-}
-
-function sortByCost(list: ModelCatalogEntry[]): ModelCatalogEntry[] {
-  return [...list].sort((a, b) => {
-    const ca = modelCost(a)
-    const cb = modelCost(b)
-    if (ca === null && cb === null) return a.id.localeCompare(b.id)
-    if (ca === null) return 1
-    if (cb === null) return -1
-    return ca - cb || a.id.localeCompare(b.id)
+function wizardGateForStep(step: number): { ok: boolean; why: string; canRun: boolean } {
+  return stageGate(step, {
+    state,
+    session: sessionSnapshot(),
+    preset: presetById(state.presetId),
+    baseUrl: modelsStage.currentBaseUrl(),
+    contractOk: resolveContract(state.contract).errors.length === 0,
   })
 }
 
-function fmtPerMillion(value: number): string {
-  return value >= 100 ? String(Math.round(value)) : value >= 10 ? value.toFixed(1) : value.toFixed(2)
-}
-
-function perMillionText(m: ModelCatalogEntry): string {
-  if (!m.pricing) return ''
-  return `$${fmtPerMillion(m.pricing.prompt * 1e6)}/${fmtPerMillion(m.pricing.completion * 1e6)}M`
-}
-
-function modelRunRange(m: ModelCatalogEntry): { low: number; high: number } | null {
-  const range = modelCostRange(m)
-  if (!range) return null
-  const calls = (state.source.kind === 'sheet' ? Math.max(1, sheetRows.length) : 1) * Math.max(1, state.repeats)
-  return { low: range.low * calls, high: range.high * calls }
-}
-
-function costSummary(m: ModelCatalogEntry): string {
-  const parts: string[] = []
-  const range = modelRunRange(m)
-  if (range) parts.push(`~${formatUsd(range.low)}–${formatUsd(range.high)} all rows`)
-  const perMillion = perMillionText(m)
-  if (perMillion) parts.push(`${perMillion} / 1M`)
-  return parts.join(' · ')
-}
-
-function isOpenRouterBatchModel(model: ModelCatalogEntry): boolean {
-  return state.presetId === 'openrouter' && /:batch(?:$|[-:])/i.test(model.id)
-}
-
-function isOpenRouterFreeModel(model: ModelCatalogEntry): boolean {
-  return state.presetId === 'openrouter' && /:free(?:$|[-:])/i.test(model.id)
-}
-
-/** One catalog predicate feeds list, quick add, budget bulk-add, and run
- * validation. Provider-side filters are not cosmetic. */
-function visibleModels(): ModelCatalogEntry[] {
-  return models.filter(model => {
-    if (isOpenRouterBatchModel(model)) return false
-    if (state.hideFreeModels && isOpenRouterFreeModel(model)) return false
-    if (state.zdr && !zdrIds.has(model.id)) return false
-    return true
-  })
-}
-
-function renderProviderBand(): void {
-  if (!refs.providerBand) return
-  const preset = presetById(state.presetId)
-  const keySet = apiKey.length > 0
-  const parts = [preset.label]
-  if (models.length > 0) parts.push(`${models.length} model${models.length === 1 ? '' : 's'}`)
-  if (keySet) parts.push('key set ✓')
-  else if (models.length > 0) parts.push('no key')
-  refs.providerSummary.textContent = `— ${parts.join(' · ')}`
-  // Collapsed once models are loaded; a novice with nothing configured yet
-  // sees the form open instead of an empty screen.
-  refs.providerBand.open = models.length === 0
-}
-
-function renderModels(): void {
-  refs.modelList.replaceChildren()
-  const query = refs.modelSearch.value.trim().toLowerCase()
-  let list = visibleModels().filter(m => !query || m.id.toLowerCase().includes(query))
-  list = sortByCost(list)
-
-  if (list.length === 0) {
-    refs.modelList.append(h('p', { class: 'muted small' },
-      models.length === 0
-        ? 'No models loaded. Pick a provider and press "Load models" — an API key is needed for providers that require one.'
-        : state.zdr ? 'No ZDR-capable models match these filters.' : 'No models match these filters.',
-    ))
+/** Flags displayed results as stale once the authoring the run came from no
+ * longer matches what the UI currently holds (plan.fingerprint). */
+function renderResultsStale(): void {
+  if (!refs.resultsStale) return
+  if (!resultsFingerprint || results.length === 0) {
+    refs.resultsStale.hidden = true
     return
   }
-  refs.loadFacts.textContent = `${list.length} of ${models.length} listed${state.zdr ? ' (ZDR only)' : ''}`
-  const selectedIds = new Set(state.selected)
-
-  for (const m of list) {
-    const summary = costSummary(m)
-    refs.modelList.append(h('label', { class: 'model-option' },
-      h('input', { type: 'checkbox', checked: selectedIds.has(m.id) }),
-      h('span', { class: 'model-id' }, m.id),
-      h('span', { class: 'model-cost' }, summary),
-    ))
-  }
-}
-
-function renderSelected(): void {
-  const selected = selectedModels()
-  if (selected.length === 0) {
-    refs.selected.replaceChildren(h('p', { class: 'muted small' }, 'None yet — check models in the list, quick-add below, or type a model ID.'))
-  } else {
-    refs.selected.replaceChildren(...selected.map(m => {
-      const remove = h('button', { class: 'minibtn danger', type: 'button' }, '×')
-      remove.addEventListener('click', () => {
-        state.selected = state.selected.filter(id => id !== m.id)
-        saveState(state)
-        renderSelected()
-        renderModels()
-      })
-      return h('div', { class: 'selected-row' },
-        h('span', { class: 'selected-id' }, m.id),
-        h('span', { class: 'muted small' }, m.pricing ? (modelRunRange(m) ? `~${formatUsd(modelRunRange(m)!.low)}–${formatUsd(modelRunRange(m)!.high)} all rows` : 'cost unknown') : 'cost unknown'),
-        remove,
-      )
-    }))
-  }
-  updateRunButton()
-}
-
-function renderQuickChips(): void {
-  const preset = presetById(state.presetId)
-  const available = new Set(visibleModels().map(model => model.id))
-  const curated = (QUICK_MODELS[preset.provider.group] ?? []).filter(model => available.has(model.id))
-  const recent = loadRecent()
-    .filter(r => r.presetId === state.presetId && !curated.some(q => q.id === r.model))
-    .slice(0, 5)
-  const chips = h('div', { class: 'chip-row' })
-  for (const q of curated) {
-    chips.append(h('button', { class: 'chip', type: 'button', title: q.id }, q.id))
-  }
-  for (const r of recent) {
-    if (!available.has(r.model)) continue
-    chips.append(h('button', { class: 'chip recent', type: 'button', title: 'recently run' }, r.model))
-  }
-  refs.quickChips.replaceChildren(
-    h('span', { class: 'muted small' }, 'Quick add:'),
-    chips.childElementCount ? chips : h('span', { class: 'muted small' }, 'run a model to keep it here'),
-  )
-}
-
-function renderBudgetFacts(): void {
-  const eligible = sortByCost(visibleModels().filter(m => {
-    const cost = modelCost(m)
-    return cost !== null && cost <= state.budget
-  }))
-  refs.budgetFacts.textContent = `${eligible.length} of ${models.length} models under ${formatUsd(state.budget)}`
+  const current = planFingerprint({
+    state,
+    session: { sheetRowCount: sheetRows.length },
+    // Must match run(): plan.template is always state.prompt for both sources.
+    sheetTemplate: state.prompt,
+  })
+  const stale = current !== resultsFingerprint
+  refs.resultsStale.hidden = !stale
+  refs.resultsStale.textContent = 'These results match an earlier version of your prompt, models, or settings — run again to refresh them.'
 }
 
 function renderContract(): void {
@@ -843,14 +638,14 @@ function renderTemplates(): void {
 }
 
 function updateRunButton(): void {
-  const selected = selectedModels()
-  refreshWizard()
+  const selected = selectedModels({ models, selected: state.selected })
+  wizard?.refresh()
   if (running || models.length === 0 || selected.length === 0 || !state.prompt.trim()) {
     refs.run.disabled = true
     refs.run.textContent = selected.length ? `Run on ${selected.length} model${selected.length === 1 ? '' : 's'}` : 'Run comparison'
     if (!running) {
       let why = ''
-      if (models.length === 0) why = modelsLoadedFailed ? `Blocked — ${modelsLoadedFailed}` : 'Load the model list first'
+      if (models.length === 0) why = 'Load the model list first (provider band above)'
       else if (selected.length === 0) why = 'Select at least one loaded model'
       else if (!state.prompt.trim()) why = 'Write a prompt'
       refs.runEstimate.textContent = why
@@ -859,22 +654,7 @@ function updateRunButton(): void {
   }
   refs.run.disabled = false
   refs.run.textContent = `Run on ${selected.length} model${selected.length === 1 ? '' : 's'}`
-  refs.runEstimate.textContent = estimateTotal()
-}
-
-function estimateTotal(): string {
-  const range = computeEstimatedRange()
-  const caseCount = state.source.kind === 'sheet' ? Math.max(1, sheetRows.length) : 1
-  return range.high > 0
-    ? `~${formatUsd(range.low)}–${formatUsd(range.high)} (${caseCount} case${caseCount === 1 ? '' : 's'} × ${selectedModels().length} model${selectedModels().length === 1 ? '' : 's'}${state.repeats > 1 ? ` × ${state.repeats}` : ''}; 10–${state.params.maxTokens ?? ASSUMED_OUTPUT_TOKENS} output tokens)`
-    : ''
-}
-
-function computeEstimatedRange(): { low: number; high: number } {
-  return selectedModels().reduce((sum, model) => {
-    const range = modelRunRange(model)
-    return range ? { low: sum.low + range.low, high: sum.high + range.high } : sum
-  }, { low: 0, high: 0 })
+  refs.runEstimate.textContent = estimateTotalText(costInputs())
 }
 
 // --- actions ------------------------------------------------------------------
@@ -966,87 +746,21 @@ function normalizeSheetCell(value: unknown): string {
   return typeof value === 'string' ? value : String(value)
 }
 
-async function loadModels(): Promise<void> {
-  const preset = presetById(state.presetId)
-  const baseUrl = preset.customBase ? refs.customBase.value.trim() : preset.provider.api.baseUrl
-  if (preset.customBase && !baseUrl) {
-    refs.loadFacts.textContent = 'Enter the base URL first.'
-    return
-  }
-  refs.loadModels.disabled = true
-  refs.loadModels.textContent = 'Loading…'
-  try {
-    models = await fetchModelList(preset, baseUrl, apiKey)
-    if (preset.provider.group === 'openai' || preset.provider.group === 'anthropic') {
-      await enrichWithLiteLLMPricing(models, preset.provider.group)
-    }
-    if (state.zdr && preset.provider.group === 'openrouter') {
-      zdrIds = await fetchZdrModels(baseUrl)
-    }
-    refs.loadFacts.textContent = `${models.length} model${models.length === 1 ? '' : 's'} loaded${preset.provider.group === 'openai' || preset.provider.group === 'anthropic' ? ' (pricing via LiteLLM)' : ''}`
-  } catch (error) {
-    models = []
-    refs.loadFacts.textContent = `Load failed: ${(error as Error).message}`
-  } finally {
-    modelsLoadedFailed = models.length === 0 ? refs.loadFacts.textContent : ''
-    renderProviderBand()
-    renderModels()
-    renderSelected()
-    renderBudgetFacts()
-    renderQuickChips()
-    updateRunButton()
-    refs.loadModels.disabled = false
-    refs.loadModels.textContent = 'Load models'
-  }
-}
-
-function selectModel(id: string, checked: boolean): void {
-  if (checked) {
-    if (state.zdr && !zdrIds.has(id)) return
-    if (!state.selected.includes(id)) {
-      state.selected = [...state.selected, id]
-      pushRecent({ presetId: state.presetId, model: id })
-      renderQuickChips()
-    }
-  } else {
-    state.selected = state.selected.filter(s => s !== id)
-  }
-  saveState(state)
-  renderSelected()
-  renderModels()
-}
-
-function addModelById(id: string): void {
-  const trimmed = id.trim()
-  if (!trimmed) return
-  if (state.zdr && !zdrIds.has(trimmed)) {
-    refs.loadFacts.textContent = 'ZDR mode: model is not on the ZDR endpoint list.'
-    return
-  }
-  if (!models.some(m => m.id === trimmed)) {
-    models = [...models, { id: trimmed }]
-  }
-  selectModel(trimmed, true)
-  renderModels()
-}
-
 function scheduleTokenCount(): void {
   clearTimeout(tokenTimer)
   tokenTimer = setTimeout(async () => {
     tokenEstimate = await countTokens(`${state.system}\n${state.prompt}`)
-    renderModels()
-    renderBudgetFacts()
-    updateRunButton()
+    modelsStage.sync()
   }, 300)
 }
 
 async function run(): Promise<void> {
   if (running) return
   const preset = presetById(state.presetId)
-  const baseUrl = preset.customBase ? refs.customBase.value.trim() : preset.provider.api.baseUrl
+  const baseUrl = modelsStage.currentBaseUrl()
   if (preset.customBase && !baseUrl) { alert('Enter the custom endpoint base URL first.'); return }
   if (models.length === 0) { alert('Load the model list first.'); return }
-  const selected = selectedModels()
+  const selected = selectedModels({ models, selected: state.selected })
   if (selected.length === 0) { alert('Add at least one loaded model.'); return }
 
   const provider = { ...preset.provider, api: { ...preset.provider.api, baseUrl } }
@@ -1055,13 +769,18 @@ async function run(): Promise<void> {
   const repeats = Math.max(1, state.repeats)
   const totalCalls = plan.cases.length * selected.length * repeats
 
-  const estimatedRange = computeEstimatedRange()
+  const estimatedRange = estimateTotalRange(costInputs())
   if (estimatedRange.high > CONFIRM_THRESHOLD_USD && !confirm(`Estimated run cost ~${formatUsd(estimatedRange.low)}–${formatUsd(estimatedRange.high)} for ${totalCalls} calls (10 to ${state.params.maxTokens ?? ASSUMED_OUTPUT_TOKENS} output tokens). Continue?`)) return
 
   // Move immediately. Token counting and spec construction may take a moment
   // for a large workbook; the user should see that Run was accepted.
   refs.facts.textContent = `Preparing ${totalCalls} calls…`
-  goTo(5)
+  resultsFingerprint = planFingerprint({
+    state,
+    session: { sheetRowCount: sheetRows.length },
+    sheetTemplate: plan.template,
+  })
+  wizard?.goTo(5)
 
   const contractCtx = buildContractContext(state.contract)
   const built = await buildRunSpecs({
@@ -1167,8 +886,9 @@ async function run(): Promise<void> {
   refs.exportJsonl.disabled = false
   refs.exportPy.disabled = false
   grid?.showCompleted(runMeta, specs, results, state.parserId)
+  renderResultsStale()
   for (const spec of specs) pushRecent({ presetId: state.presetId, model: spec.model })
-  renderQuickChips()
+  modelsStage.sync()
 }
 
 function cancelRun(): void {
@@ -1231,9 +951,8 @@ function newRun(): void {
   grid?.clear()
   refs.resultsGrid.replaceChildren(h('p', { class: 'muted' }, 'Run a prompt to see model-by-model answers here.'))
   saveState(state)
-  renderSelected()
-  renderModels()
-  goTo(0)
+  modelsStage.sync()
+  wizard?.goTo(0)
 }
 
 function renderSourceTabs(): void {
@@ -1254,39 +973,6 @@ function renderSourceTabs(): void {
 // --- listeners ----------------------------------------------------------------
 
 function setupListeners(): void {
-  refs.preset.addEventListener('change', () => {
-    state.presetId = refs.preset.value
-    const preset = presetById(state.presetId)
-    refs.customBase.hidden = !preset.customBase
-    refs.keyInput.placeholder = preset.keyLabel
-    refs.zdrRow.hidden = preset.provider.group !== 'openrouter'
-    models = []
-    zdrIds = new Set()
-    state.selected = []
-    renderProviderBand()
-    renderModels()
-    renderQuickChips()
-    saveState(state)
-  })
-
-  refs.customBase.addEventListener('change', () => {
-    state.customBase = refs.customBase.value.trim()
-    saveState(state)
-  })
-
-  refs.keyInput.addEventListener('input', () => {
-    apiKey = refs.keyInput.value.trim()
-    saveKey(apiKey, refs.remember.checked)
-  })
-
-  refs.remember.addEventListener('change', () => {
-    state.keyRemember = refs.remember.checked
-    saveKey(apiKey, refs.remember.checked)
-    saveState(state)
-  })
-
-  refs.loadModels.addEventListener('click', () => void loadModels())
-
   refs.prompt.addEventListener('input', () => {
     state.prompt = refs.prompt.value
     promptCaret = refs.prompt.selectionStart ?? refs.prompt.value.length
@@ -1353,63 +1039,12 @@ function setupListeners(): void {
   })
   renderSourceTabs()
 
-  refs.modelSearch.addEventListener('input', () => renderModels())
-  refs.hideFreeModels.addEventListener('change', () => {
-    state.hideFreeModels = refs.hideFreeModels.checked
-    // A hidden route is not a selected route. This prevents a privacy filter
-    // from being cosmetic and prevents stale batch/free ids reaching RunSpec.
-    state.selected = state.selected.filter(id => visibleModels().some(model => model.id === id))
-    saveState(state)
-    renderModels()
-    renderSelected()
-    renderQuickChips()
-    renderBudgetFacts()
-  })
-  refs.modelList.addEventListener('change', ev => {
-    const input = (ev.target as HTMLElement).closest('input[type=checkbox]')
-    if (!input) return
-    const option = input.closest('.model-option')
-    if (!option) return
-    const id = option.querySelector('.model-id')?.textContent ?? ''
-    if (id) selectModel(id, (input as HTMLInputElement).checked)
-  })
-
-  refs.manualAdd.addEventListener('click', () => void addModelById(refs.manualId.value))
-  refs.manualId.addEventListener('keydown', ev => {
-    if (ev.key === 'Enter') {
-      ev.preventDefault()
-      addModelById(refs.manualId.value)
-      refs.manualId.value = ''
-    }
-  })
-
-  refs.budget.addEventListener('input', () => {
-    state.budget = Number(refs.budget.value)
-    renderBudgetFacts()
-    saveState(state)
-  })
-  refs.addUnderBudget.addEventListener('click', () => void (async () => {
-    if (tokenEstimate === 0) tokenEstimate = await countTokens(`${state.system}\n${state.prompt}`)
-    let added = 0
-    for (const m of sortByCost(visibleModels())) {
-      const cost = modelCost(m)
-      if (cost !== null && cost <= state.budget) {
-        selectModel(m.id, true)
-        added++
-      }
-    }
-    renderBudgetFacts()
-    renderModels()
-    refs.budgetFacts.textContent = `${added} model(s) added under ${formatUsd(state.budget)}`
-  })())
-
   for (const [input, key] of [[refs.paramTemp, 'temperature'], [refs.paramMax, 'maxTokens'], [refs.paramTopP, 'topP']] as const) {
     input.addEventListener('change', () => {
       const raw = input.value.trim()
       ;(state.params as Record<string, number | undefined>)[key] = raw === '' ? undefined : Number(raw)
       saveState(state)
-      renderModels()
-      renderBudgetFacts()
+      modelsStage.sync()
       updateRunButton()
     })
   }
@@ -1422,26 +1057,6 @@ function setupListeners(): void {
     state.streamThreshold = Math.max(1, Math.min(100000, Number(refs.streamThreshold.value) || 100))
     refs.streamThreshold.value = String(state.streamThreshold)
     saveState(state)
-  })
-  refs.zdr.addEventListener('change', () => {
-    state.zdr = refs.zdr.checked
-    saveState(state)
-    void (async () => {
-      if (state.zdr && state.presetId === 'openrouter') {
-        try {
-          zdrIds = await fetchZdrModels(presetById('openrouter').provider.api.baseUrl)
-        } catch (error) {
-          refs.runEstimate.textContent = `Could not load ZDR routes: ${(error as Error).message}`
-          refs.zdr.checked = false
-          state.zdr = false
-        }
-      }
-      state.selected = state.selected.filter(id => visibleModels().some(model => model.id === id))
-      renderModels()
-      renderSelected()
-      renderQuickChips()
-      renderBudgetFacts()
-    })()
   })
   refs.repeats.addEventListener('change', () => {
     state.repeats = Math.max(1, Number(refs.repeats.value) || 1)
@@ -1541,61 +1156,6 @@ function setupListeners(): void {
   })
 }
 
-// --- step wizard ---------------------------------------------------------------
-
-const WIZARD_STEPS = ['Prompt & data', 'Output format', 'Provider & models', 'Run settings', 'Review & run', 'Results']
-let currentStep = 0
-
-function wizardGate(step: number): { ok: boolean; why: string } {
-  if (step === 0) return state.prompt.trim().length > 0 ? { ok: true, why: '' } : { ok: false, why: 'Write a prompt first' }
-  if (step === 2) {
-    if (models.length === 0) return { ok: false, why: modelsLoadedFailed || 'Load the model list first (provider band above)' }
-    if (selectedModels().length === 0) return { ok: false, why: 'Select at least one loaded model' }
-    return { ok: true, why: '' }
-  }
-  return { ok: true, why: '' }
-}
-
-function goTo(step: number): void {
-  if (step > currentStep && !wizardGate(currentStep).ok) return
-  currentStep = Math.max(0, Math.min(WIZARD_STEPS.length - 1, step))
-  saveState(state)
-  document.querySelectorAll<HTMLElement>('.step').forEach(el => {
-    el.classList.toggle('active', Number(el.dataset.step) === currentStep)
-  })
-  refs.wizardNav.replaceChildren(...WIZARD_STEPS.map((label, i) => {
-    const chip = h('button', {
-      class: `step-chip ${i === currentStep ? 'active' : ''} ${i < currentStep ? 'done' : ''}`,
-      type: 'button',
-      disabled: i > currentStep || (i === currentStep + 1 && !wizardGate(currentStep).ok),
-    }, `${i + 1}. ${label}`)
-    chip.addEventListener('click', () => goTo(i))
-    return chip
-  }))
-  refs.wizardBack.disabled = currentStep === 0
-  if (currentStep === 4) renderReview()
-  refreshWizard()
-}
-
-/** Re-evaluate the current step's gate without navigating. Called whenever a
- * required condition (prompt, model selection) may have just been met. */
-function refreshWizard(): void {
-  if (!refs.wizardNext) return
-  const gate = wizardGate(currentStep)
-  refs.wizardNext.disabled = currentStep >= 4 || currentStep === WIZARD_STEPS.length - 1 || !gate.ok
-  refs.wizardNext.textContent = 'Next →'
-  refs.wizardNext.title = gate.ok ? '' : gate.why
-  refs.wizardNext.hidden = currentStep >= 4
-}
-
-function wireWizard(): void {
-  refs.wizardBack.addEventListener('click', () => goTo(currentStep - 1))
-  refs.wizardNext.addEventListener('click', () => {
-    goTo(currentStep + 1)
-  })
-  goTo(0)
-}
-
 // --- backup / restore -----------------------------------------------------------
 
 interface BackupFile {
@@ -1633,7 +1193,8 @@ async function runRestore(): Promise<void> {
 
     if (backup.state && typeof backup.state === 'object') {
       Object.assign(state, defaultState(), backup.state)
-      refs.keyInput.value = ''
+      apiKey = ''
+      modelsCarriedBy = ''
     }
     if (Array.isArray(backup.templates)) {
       templates = backup.templates
@@ -1646,6 +1207,7 @@ async function runRestore(): Promise<void> {
       specs = backup.run.specs
       results = backup.run.results
       runMeta = backup.run.meta
+      resultsFingerprint = 'restored'
       if (!grid) grid = new ResultsGrid(refs.resultsGrid)
       grid.reset(results, specs.map(s => s.caseLabel))
       refs.exportXlsx.disabled = false
@@ -1662,19 +1224,11 @@ async function runRestore(): Promise<void> {
 
 /** Re-sync every input from the (possibly restored) persisted state. */
 function applyRestoredState(): void {
-  const preset = presetById(state.presetId)
-  refs.preset.value = state.presetId
-  refs.customBase.hidden = !preset.customBase
-  refs.customBase.value = state.customBase
-  refs.keyInput.placeholder = preset.keyLabel
-  refs.zdrRow.hidden = preset.provider.group !== 'openrouter'
-  refs.zdr.checked = state.zdr
   refs.stream.checked = state.stream
   refs.streamThreshold.value = String(state.streamThreshold)
   refs.repeats.value = String(state.repeats)
   refs.retries.value = String(state.retries)
   refs.concurrency.value = String(state.concurrency)
-  refs.budget.value = String(state.budget)
   refs.paramTemp.value = state.params.temperature === undefined ? '' : String(state.params.temperature)
   refs.paramMax.value = state.params.maxTokens === undefined ? '' : String(state.params.maxTokens)
   refs.paramTopP.value = state.params.topP === undefined ? '' : String(state.params.topP)
@@ -1687,11 +1241,8 @@ function applyRestoredState(): void {
   refs.placement.value = state.placement
   models = []
   zdrIds = new Set()
-  renderProviderBand()
-  renderModels()
-  renderSelected()
-  renderQuickChips()
-  renderBudgetFacts()
+  modelsCarriedBy = ''
+  modelsStage.applyRestored()
   renderContract()
   renderTemplates()
   updateRunButton()
@@ -1701,15 +1252,11 @@ function applyRestoredState(): void {
 function init(): void {
   buildApp()
   document.documentElement.dataset.theme = state.dark ? 'dark' : 'light'
-  renderModels()
-  renderSelected()
-  renderQuickChips()
-  renderBudgetFacts()
+  modelsStage.sync()
   renderContract()
   renderTemplates()
   updateRunButton()
   setupListeners()
-  wireWizard()
   scheduleTokenCount()
 }
 

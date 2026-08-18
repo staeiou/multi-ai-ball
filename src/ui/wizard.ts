@@ -13,6 +13,11 @@ export interface WizardHost {
   nav: HTMLElement
   back: HTMLButtonElement
   next: HTMLButtonElement
+  /** Always-visible reason the Next button is disabled. A `title` tooltip is
+   * not an answer: a user who cannot advance is already stuck, and asking them
+   * to hover the control that looks broken to find out why is how "models
+   * loaded, I picked one, nothing happens" happens. */
+  blocker: HTMLElement
   gate: Gate
   /** Called on every settled step change (review render, results render). */
   onStep?(step: number): void
@@ -24,6 +29,9 @@ export class Wizard {
   constructor(private host: WizardHost) {
     host.back.addEventListener('click', () => this.goTo(this.current - 1))
     host.next.addEventListener('click', () => this.goTo(this.current + 1))
+    // Step 0 must become active on boot; otherwise every stage stays
+    // display:none and the app boots to an empty main.
+    this.render()
     this.refresh()
   }
 
@@ -48,17 +56,21 @@ export class Wizard {
     this.host.next.disabled = last || !gate.ok
     this.host.next.hidden = last
     this.host.next.title = gate.ok ? '' : gate.why
+    this.host.blocker.textContent = gate.ok || last ? '' : gate.why
+    this.host.blocker.hidden = gate.ok || last
     this.host.back.disabled = this.current === 0
     this.renderChips()
   }
 
+  /** Show the current step, then re-derive every control from the gate — one
+   * path, so a step change and a state change can never leave the buttons
+   * saying different things. */
   private render(): void {
     document.querySelectorAll<HTMLElement>('.step').forEach(el => {
       el.classList.toggle('active', Number(el.dataset.step) === this.current)
       if (el.classList.contains('active')) el.scrollTop = 0
     })
-    this.host.back.disabled = this.current === 0
-    this.renderChips()
+    this.refresh()
   }
 
   private renderChips(): void {

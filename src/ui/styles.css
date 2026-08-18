@@ -38,6 +38,16 @@ html[data-theme='dark'] {
   box-sizing: border-box;
 }
 
+/* The `hidden` attribute is how this app hides things from script (the ZDR
+   row, the custom Base URL field, the Cancel button). The UA rule for it is
+   `[hidden] { display: none }`, which ANY author rule setting `display`
+   outruns — `.checkbox-row { display: flex }` alone was enough to keep the
+   OpenRouter-only ZDR toggle on screen for every provider. Author-level and
+   forced, so setting `.hidden = true` always means hidden. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -772,14 +782,41 @@ textarea.input {
 
 .wizard-nav { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--border); padding: 12px 0; }
 .step-chip { padding: 8px 14px; }
-.step.active { min-height: min(720px, calc(100vh - 220px)); }
+/* No floor: the step is a flex child of .app-main and already fills it. A
+   720px minimum made every stage taller than the viewport, so the page
+   scrolled behind .app-main's `overflow: hidden` and clipped instead. */
+.step.active { min-height: 0; }
 .stage-card { width: 100%; max-width: none; }
-.stage-heading { max-width: 780px; margin-bottom: 22px; }
-.stage-heading h2 { margin: 2px 0 6px; color: var(--text); font-size: 25px; letter-spacing: -0.02em; text-transform: none; }
-.stage-heading p { margin: 0; color: var(--muted); max-width: 670px; }
-.eyebrow { color: var(--primary); font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.models-stage .models-layout { display: block; }
-.models-stage .model-list { max-height: min(58vh, 620px); }
+/* One line, never four. The nav pills above already say "3. Provider &
+   models", so an eyebrow reading "Step 3" and a 25px h2 repeating the title
+   were pure duplication, and the paragraph under them described the UI the
+   user is looking at. That block cost ~120px of height on a 1080p screen
+   before either pane of the models stage got a single pixel. */
+.stage-heading {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-width: none;
+  margin-bottom: 10px;
+}
+
+.stage-heading h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.stage-heading p {
+  margin: 0;
+  max-width: none;
+  color: var(--muted);
+  font-size: 12.5px;
+}
 .model-filters { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
 .model-filters .checkbox-row { margin: 0; }
 .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; max-width: 960px; }
@@ -805,3 +842,202 @@ textarea.input {
 .sheet-table th:first-child, .sheet-table td:first-child { position: sticky; left: 0; z-index: 2; width: 48px; min-width: 48px; max-width: 48px; background: var(--card); text-align: right; color: var(--muted); }
 .sheet-table th:first-child { z-index: 3; background: var(--bg); }.sheet-table tr { cursor: pointer; }.sheet-table tr:hover td, .sheet-table tr.active td { background: var(--primary-soft); }
 @media (max-width: 780px) { .settings-grid, .result-filters { grid-template-columns: 1fr; }.review-item { grid-template-columns: 1fr; gap: 2px; } }
+
+/* --- provider & models stage ------------------------------------------------
+   Layout contract (see stages/provider-models.ts): nothing on the page
+   scrolls. The stage fills the step, the provider band is a fixed-height
+   header that collapses to one line once models load, and the two panes below
+   each own a scroll region. Every ancestor in that chain needs `min-height: 0`
+   or a flex item refuses to shrink below its content and the scroll region
+   never forms. */
+
+.models-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.models-stage .stage-heading {
+  flex: none;
+}
+
+/* --- the collapsible provider band --- */
+
+.provider-band {
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  margin-bottom: 16px;
+}
+
+.provider-band-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.provider-band-label {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.provider-band-state {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-chevron {
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+  transition: transform 0.15s ease;
+}
+
+.provider-band-head[aria-expanded='true'] .provider-chevron {
+  transform: rotate(180deg);
+}
+
+.provider-band-body {
+  padding: 0 14px 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* --- the two panes --- */
+
+.models-layout {
+  flex: 1;
+  min-height: 0;
+  /* Overrides the base rule's `align-items: start`, which sizes each pane to
+     its content — a pane that is not stretched to the row height has no
+     height for its list to scroll within. */
+  align-items: stretch;
+}
+
+.pick-col,
+.selected-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pick-col .section-label,
+.selected-col .section-label,
+.pick-col .input,
+.model-filters {
+  flex: none;
+}
+
+/* The wraps exist only to hand the list a height to scroll within: the pane
+   is a column, the wrap takes what the fixed rows leave, the list scrolls. */
+.model-list-wrap,
+.selected-list-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.models-stage .model-list {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+.selected-list-wrap {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px;
+  overflow: auto;
+  background: var(--card);
+}
+
+.selected-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.manual-row {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.manual-row .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.manual-row .btn {
+  flex: none;
+}
+
+.selected-col .row,
+.selected-col .budget-slider {
+  flex: none;
+}
+
+.quick-add-block {
+  flex: none;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.quick-add-block .section-label {
+  margin-bottom: 4px;
+}
+
+/* --- results staleness notice ---------------------------------------------- */
+
+.results-stale {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  color: var(--text);
+  font-size: 12.5px;
+}
+
+@media (max-width: 780px) {
+  /* One column: the panes stack and the step scrolls as a whole, so neither
+     pane needs (or gets) its own scroll region. */
+  .pick-col,
+  .selected-col,
+  .model-list-wrap,
+  .selected-list-wrap {
+    min-height: auto;
+  }
+
+  .models-stage .model-list {
+    max-height: 320px;
+  }
+}
+
+/* --- wizard blocker --------------------------------------------------------- */
+
+.wizard-blocker {
+  flex: 1;
+  margin: 0;
+  align-self: center;
+  text-align: right;
+  color: var(--warn);
+  font-size: 12.5px;
+}

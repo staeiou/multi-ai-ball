@@ -6,7 +6,7 @@ import { expect, test } from '@playwright/test'
 const STUB_BASE = 'http://localhost:8787'
 
 async function fillCustomProvider(page: import('@playwright/test').Page): Promise<void> {
-  await page.selectOption('.provider-card select', 'custom')
+  await page.selectOption('.provider-band select', 'custom')
   await page.fill('input[placeholder*="Base URL"]', STUB_BASE)
   await page.click('text=Load models')
   await expect(page.locator('.model-option')).toHaveCount(5)
@@ -69,11 +69,14 @@ test.describe('mock provider flow', () => {
     await page.goto('/')
     await advanceToProvider(page, 'x')
     // Point the custom provider at a dead endpoint so Load models fails.
-    await page.selectOption('.provider-card select', 'custom')
+    await page.selectOption('.provider-band select', 'custom')
     await page.fill('input[placeholder*="Base URL"]', 'http://localhost:59999')
     await page.click('text=Load models')
     await expect(page.getByText('Load failed:', { exact: false }).first()).toBeVisible()
-    await page.click('text=Next →')
+    // The gate blocks advance with a visible reason: never route into an
+    // empty models stage.
+    await expect(page.locator('button.wizard-next')).toBeDisabled()
+    await expect(page.locator('button.wizard-next')).toHaveAttribute('title', /model list/)
     await expect(page.locator('.step.active')).toHaveCount(1)
   })
 

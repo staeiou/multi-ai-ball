@@ -41,12 +41,17 @@
   display: none;
 }
 
+/* Column flex rather than grid: a stage that owns its own scroll regions
+   (the models stage) opts into filling the step with `flex: 1; min-height: 0`,
+   while every short stage keeps sizing to its content. A grid with
+   `align-content: start` gives content-sized rows, so a fill stage has no
+   height to resolve against and the two-pane layout collapses. */
 .step.active {
   flex: 1;
   min-height: 0;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
-  align-content: start;
   overflow-y: auto;
 }
 

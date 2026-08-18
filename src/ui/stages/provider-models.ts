@@ -15,8 +15,8 @@ import type { ModelCatalogEntry } from '../../core/types'
 import type { PersistedState } from '../../state'
 import { saveKey } from '../../state'
 import { h } from '../dom'
-import { modelsCacheKey } from '../model'
-import { costSummary, modelCost, modelCostRange, sortByCost, type CostInputs } from '../costs'
+import { modelsCacheKey, providerKeyRequired } from '../model'
+import { costSummary, estimateTotalRange, modelCost, sortByCost, type CostInputs } from '../costs'
 
 export interface ModelsStageRead {
   state: PersistedState
@@ -39,6 +39,8 @@ export interface ModelsStageHost {
 
 export interface ModelsStage {
   el: HTMLElement
+  /** The base URL the run should hit right now (band's custom input when set). */
+  currentBaseUrl(): string
   /** Re-render every surface from host state (restore, token updates). */
   sync(): void
   /** State-restore entry point: the provider band must re-open when the
@@ -63,6 +65,9 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
     bandState: null as unknown as HTMLSpanElement,
     preset: null as unknown as HTMLSelectElement,
     customBase: null as unknown as HTMLInputElement,
+    /** The label wrapping `customBase`. Visibility is toggled here, not on the
+     * input: hiding only the input leaves its "Base URL" caption on screen. */
+    customBaseField: null as unknown as HTMLLabelElement,
     keyInput: null as unknown as HTMLInputElement,
     remember: null as unknown as HTMLInputElement,
     loadModels: null as unknown as HTMLButtonElement,
@@ -70,8 +75,10 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
     modelSearch: null as unknown as HTMLInputElement,
     hideFreeModels: null as unknown as HTMLInputElement,
     modelList: null as unknown as HTMLDivElement,
-    manualId: null as unknown as HTMLInputElement,
-    manualAdd: null as unknown as HTMLButtonElement,
+    /** Offers the search text as a model ID when nothing in the catalog
+     * matches it. A separate always-on "add by ID" input cost a whole row of
+     * a height-starved column to serve a rare case. */
+    addById: null as unknown as HTMLButtonElement,
     budget: null as unknown as HTMLInputElement,
     budgetFacts: null as unknown as HTMLSpanElement,
     addUnderBudget: null as unknown as HTMLButtonElement,
@@ -80,6 +87,9 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
     zdr: null as unknown as HTMLInputElement,
     zdrRow: null as unknown as HTMLLabelElement,
     quickChips: null as unknown as HTMLDivElement,
+    quickAddBlock: null as unknown as HTMLDivElement,
+    listFacts: null as unknown as HTMLSpanElement,
+    selectedFacts: null as unknown as HTMLSpanElement,
   }
 
   function costInputs(read: ModelsStageRead): CostInputs {
@@ -143,22 +153,38 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
 
   function renderModels(): void {
     const read = host.read()
-    refs.modelList.replaceChildren()
-    const query = refs.modelSearch.value.trim().toLowerCase()
-    let list = visibleModels().filter(m => !query || m.id.toLowerCase().includes(query))
-    list = sortByCost(list, costInputs(read))
+    const query = refs.modelSearch.value.trim()
+    const needle = query.toLowerCase()
+    const list = sortByCost(
+      visibleModels().filter(m => !needle || m.id.toLowerCase().includes(needle)),
+      costInputs(read),
+    )
 
+    // Add-by-ID appears only when the catalog cannot satisfy what was typed —
+    // a provider may serve a model its own list omits.
+    const known = read.models.some(m => m.id === query)
+    refs.addById.hidden = !query || known
+    refs.addById.textContent = `Add "${query}"`
+
+    // The count lives on the pane, not in the provider band: the band spends
+    // most of its life collapsed, which is exactly when the count matters.
+    refs.listFacts.textContent = read.models.length === 0
+      ? ''
+      : needle
+        ? `${list.length} of ${read.models.length}`
+        : `${read.models.length} available${read.state.zdr ? ' · ZDR only' : ''}`
+
+    refs.modelList.replaceChildren()
     if (list.length === 0) {
       refs.modelList.append(h('p', { class: 'muted small' },
         read.models.length === 0
-          ? 'No models loaded. Set the provider & key above and press "Load models".'
+          ? 'No models loaded yet — connect a provider above.'
           : read.state.zdr ? 'No ZDR-capable models match these filters.' : 'No models match these filters.',
       ))
       return
     }
-    refs.loadFacts.textContent = `${list.length} of ${read.models.length} listed${read.state.zdr ? ' (ZDR only)' : ''}`
-    const selectedIds = new Set(read.state.selected)
 
+    const selectedIds = new Set(read.state.selected)
     for (const m of list) {
       refs.modelList.append(h('label', { class: 'model-option' },
         h('input', { type: 'checkbox', checked: selectedIds.has(m.id) }),
@@ -171,42 +197,38 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
   function renderSelected(): void {
     const read = host.read()
     const ids = read.state.selected
+
+    // The money is stated ONCE per pane. A per-model price beside every chosen
+    // model repeated the number already on its row in the list, and the number
+    // a user actually wants after choosing is the total they are about to
+    // spend — which a column of per-model ranges never adds up for them.
+    const range = estimateTotalRange(costInputs(read))
+    refs.selectedFacts.textContent = ids.length === 0
+      ? ''
+      : range.high > 0
+        ? `${ids.length} · ~${usd(range.low)}–${usd(range.high)} per run`
+        : `${ids.length} · cost unknown`
+    refs.clearSelection.hidden = ids.length === 0
+    // Quick add is an empty-state aid; once there is a selection the height
+    // belongs to it.
+    refs.quickAddBlock.hidden = ids.length > 0
+
     if (ids.length === 0) {
-      refs.selected.replaceChildren(h('p', { class: 'muted small' }, 'None yet — check models in the list, quick-add below, or type a model ID.'))
-    } else {
-      refs.selected.replaceChildren(...ids.map(id => {
-        const m = read.models.find(candidate => candidate.id === id)
-        const remove = h('button', { class: 'minibtn danger', type: 'button' }, '×')
-        remove.addEventListener('click', () => {
-          const read = host.read()
-          read.state.selected = read.state.selected.filter(s => s !== id)
-          host.saveState()
-          renderSelected()
-          renderModels()
-          host.refresh()
-        })
-        const range = m ? modelRunRangeLabel(m) : ''
-        return h('div', { class: 'selected-row' },
-          h('span', { class: 'selected-id' }, id),
-          h('span', { class: 'muted small' }, range),
-          remove,
-        )
-      }))
+      refs.selected.replaceChildren(h('p', { class: 'muted small' }, 'Nothing selected yet — tick models in the list.'))
+      return
     }
-  }
-
-  function modelRunRangeLabel(m: ModelCatalogEntry): string {
-    const { low, high } = runRangeParts(m)
-    if (low === null) return 'cost unknown'
-    return `~${low}–${high} all rows`
-  }
-
-  function runRangeParts(m: ModelCatalogEntry): { low: string | null; high: string | null } {
-    const read = host.read()
-    const perCall = modelCostRange(m, costInputs(read))
-    if (!perCall) return { low: null, high: null }
-    const calls = Math.max(1, read.state.source.kind === 'sheet' ? read.sheetRowCount : 1) * Math.max(1, read.state.repeats)
-    return { low: usd(perCall.low * calls), high: usd(perCall.high * calls) }
+    refs.selected.replaceChildren(...ids.map(id => {
+      const remove = h('button', { class: 'minibtn danger', type: 'button', 'aria-label': `Remove ${id}` }, '×')
+      remove.addEventListener('click', () => {
+        const current = host.read()
+        current.state.selected = current.state.selected.filter(s => s !== id)
+        host.saveState()
+        renderSelected()
+        renderModels()
+        host.refresh()
+      })
+      return h('div', { class: 'selected-row' }, h('span', { class: 'selected-id' }, id), remove)
+    }))
   }
 
   function renderQuickChips(): void {
@@ -236,7 +258,7 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
       const cost = modelCost(m, inputs)
       return cost !== null && cost <= read.state.budget
     }), inputs)
-    refs.budgetFacts.textContent = `${eligible.length} of ${read.models.length} models under ${usd(read.state.budget)}`
+    refs.budgetFacts.textContent = `${eligible.length} under ${usd(read.state.budget)}`
   }
 
   function readRecently(): Array<{ presetId: string; model: string }> {
@@ -292,8 +314,16 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
         zdrIds = await fetchZdrModels(baseUrl)
       }
       host.write({ models, zdrIds, modelsCarriedBy: modelsCacheKey(preset.id, baseUrl) })
-      refs.loadFacts.textContent = `${models.length} model${models.length === 1 ? '' : 's'} loaded${preset.provider.group === 'openai' || preset.provider.group === 'anthropic' ? ' (pricing via LiteLLM)' : ''}`
-      openBand(false)
+      // OpenRouter's catalog is public, so a keyless load succeeds and then the
+      // run is gated on a key that is nowhere on screen. Collapsing the band on
+      // success took the key field away at the exact moment it became the only
+      // thing left to do — so it stays open until there is a key to run with.
+      const keyMissing = providerKeyRequired(preset) && host.read().apiKey.length === 0
+      const count = `${models.length} model${models.length === 1 ? '' : 's'} loaded`
+      refs.loadFacts.textContent = keyMissing
+        ? `${count} — add your API key to run (listing the catalog is free, calling a model is not).`
+        : `${count}${preset.provider.group === 'openai' || preset.provider.group === 'anthropic' ? ' (pricing via LiteLLM)' : ''}`
+      openBand(keyMissing)
     } catch (error) {
       host.write({ models: [], modelsCarriedBy: '' })
       refs.loadFacts.textContent = `Load failed: ${(error as Error).message}`
@@ -355,7 +385,8 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
     presetSelect.value = host.read().state.presetId
     const customBase = h('input', { class: 'input', placeholder: 'Base URL — e.g. http://localhost:8000 or https://your.llm.example' })
     customBase.value = host.read().state.customBase
-    customBase.hidden = host.read().state.presetId !== 'custom'
+    const customBaseField = h('label', { class: 'field' }, h('span', {}, 'Base URL'), customBase)
+    customBaseField.hidden = host.read().state.presetId !== 'custom'
     const keyInput = h('input', { class: 'input', type: 'password', placeholder: presetById(host.read().state.presetId).keyLabel, autocomplete: 'new-password' })
     keyInput.value = host.read().apiKey || ''
     const remember = h('input', { type: 'checkbox' })
@@ -364,6 +395,7 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
     const loadFacts = h('span', { class: 'muted small', 'data-field': 'loadFacts' })
     refs.preset = presetSelect
     refs.customBase = customBase
+    refs.customBaseField = customBaseField
     refs.keyInput = keyInput
     refs.remember = remember
     refs.loadModels = loadModels
@@ -373,7 +405,7 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
       const read = host.read()
       read.state.presetId = presetSelect.value
       const preset = presetById(presetSelect.value)
-      customBase.hidden = !preset.customBase
+      customBaseField.hidden = !preset.customBase
       customBase.value = read.state.customBase || ''
       keyInput.placeholder = preset.keyLabel
       refs.zdrRow.hidden = preset.provider.group !== 'openrouter'
@@ -422,7 +454,7 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
     return h('div', { class: 'provider-band-body' },
       h('div', { class: 'field-grid' },
         h('label', { class: 'field' }, h('span', {}, 'Provider'), presetSelect),
-        h('label', { class: 'field', hidden: customBase.hidden }, h('span', {}, 'Base URL'), customBase),
+        customBaseField,
         h('label', { class: 'field' }, h('span', {}, 'API key'), keyInput),
       ),
       h('label', { class: 'checkbox-row' }, remember, ' Remember key on this device (plaintext in localStorage — only on machines you trust)'),
@@ -432,29 +464,33 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
 
   function build(): HTMLElement {
     const read0 = host.read()
-    const modelSearch = h('input', { class: 'input', type: 'search', placeholder: 'Filter the loaded model list…' })
+    const modelSearch = h('input', { class: 'input', type: 'search', placeholder: 'Filter models — or type an exact ID to add one…' })
     const hideFreeModels = h('input', { type: 'checkbox' })
     hideFreeModels.checked = read0.state.hideFreeModels
     const modelList = h('div', { class: 'model-list' })
-    const manualId = h('input', { class: 'input', placeholder: 'Add any model by ID — works even if the list is empty' })
-    const manualAdd = h('button', { class: 'btn', type: 'button' }, 'Add')
+    const addById = h('button', { class: 'btn', type: 'button' })
+    addById.hidden = true
     const budget = h('input', { class: 'input', type: 'range', min: '0.001', max: '0.05', step: '0.0005' })
     budget.value = String(read0.state.budget)
     const budgetFacts = h('span', { class: 'muted small' })
-    const addUnderBudget = h('button', { class: 'btn', type: 'button' }, 'Add all under budget')
-    const clearSelection = h('button', { class: 'btn ghost', type: 'button' }, 'Clear selection')
+    const addUnderBudget = h('button', { class: 'btn', type: 'button' }, 'Add all under')
+    const clearSelection = h('button', { class: 'minibtn', type: 'button' }, 'Clear')
     const selected = h('div', { class: 'selected-list' })
     const zdr = h('input', { type: 'checkbox' })
     zdr.checked = read0.state.zdr
     const zdrRow = h('label', { class: 'checkbox-row' }, zdr, ' ZDR only (OpenRouter — hides and deselects models without ZDR)')
     if (read0.state.presetId !== 'openrouter') zdrRow.hidden = true
     const quickChips = h('div', { class: 'chips' })
+    const listFacts = h('span', { class: 'muted small' })
+    const selectedFacts = h('span', { class: 'muted small' })
+    // Quick add is an empty-state aid: once models are chosen, the column's
+    // height belongs to the choices, not to the shortcuts for making them.
+    const quickAddBlock = h('div', { class: 'quick-add-block' }, quickChips)
 
     refs.modelSearch = modelSearch
     refs.hideFreeModels = hideFreeModels
     refs.modelList = modelList
-    refs.manualId = manualId
-    refs.manualAdd = manualAdd
+    refs.addById = addById
     refs.budget = budget
     refs.budgetFacts = budgetFacts
     refs.addUnderBudget = addUnderBudget
@@ -463,6 +499,9 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
     refs.zdr = zdr
     refs.zdrRow = zdrRow
     refs.quickChips = quickChips
+    refs.listFacts = listFacts
+    refs.selectedFacts = selectedFacts
+    refs.quickAddBlock = quickAddBlock
 
     const bandState = h('span', { class: 'provider-band-state' })
     const bandHead = h('button', { class: 'provider-band-head', type: 'button' },
@@ -497,12 +536,18 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
       const id = option.querySelector('.model-id')?.textContent ?? ''
       if (id) selectModel(id, (input as HTMLInputElement).checked)
     })
-    manualAdd.addEventListener('click', () => addModelById(refs.manualId.value))
-    manualId.addEventListener('keydown', ev => {
-      if (ev.key === 'Enter') {
+    const addSearchTermAsModel = (): void => {
+      addModelById(modelSearch.value)
+      modelSearch.value = ''
+      renderModels()
+    }
+    addById.addEventListener('click', addSearchTermAsModel)
+    modelSearch.addEventListener('keydown', ev => {
+      // Enter only ever means "add what I typed", and only when the catalog
+      // has nothing to offer for it — otherwise the search box is a filter.
+      if (ev.key === 'Enter' && !addById.hidden) {
         ev.preventDefault()
-        addModelById(refs.manualId.value)
-        refs.manualId.value = ''
+        addSearchTermAsModel()
       }
     })
     budget.addEventListener('input', () => {
@@ -523,7 +568,7 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
       }
       renderBudgetFacts()
       renderModels()
-      refs.budgetFacts.textContent = `${added} model(s) added under ${usd(read.state.budget)}`
+      refs.budgetFacts.textContent = `added ${added}`
     })
     clearSelection.addEventListener('click', () => {
       const read = host.read()
@@ -536,30 +581,34 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
     zdr.addEventListener('change', () => void toggleZdr(zdr.checked))
 
     return h('section', { class: 'card stage-card models-stage' },
-      h('div', { class: 'stage-heading' }, h('span', { class: 'eyebrow' }, 'Step 3'), h('h2', {}, 'Provider & models'), h('p', {}, 'Connect a provider, then pick the models to compare. The provider band collapses once models load — open it any time to switch.'),
-      ),
+      h('div', { class: 'stage-heading' }, h('h2', {}, 'Provider & models')),
       band,
       h('div', { class: 'models-layout' },
         h('div', { class: 'pick-col' },
-          h('p', { class: 'section-label' }, 'Model list'),
-          modelSearch,
+          h('div', { class: 'pane-head' },
+            h('p', { class: 'section-label' }, 'Model list'),
+            listFacts,
+          ),
+          h('div', { class: 'list-toolbar' }, modelSearch, addById),
           h('div', { class: 'model-filters' },
-            h('label', { class: 'checkbox-row' }, hideFreeModels, ' Hide OpenRouter :free routes (they may use your data)'),
+            h('label', { class: 'checkbox-row' }, hideFreeModels, ' Hide :free routes'),
             zdrRow,
-            h('span', { class: 'muted small' }, ' :batch routes are always excluded'),
+            h('span', { class: 'muted small' }, ':batch always excluded'),
           ),
           h('div', { class: 'model-list-wrap' }, modelList),
         ),
         h('div', { class: 'selected-col' },
-          h('p', { class: 'section-label selected-heading' }, 'Selected models'),
-          h('div', { class: 'selected-list-wrap' }, selected),
-          h('div', { class: 'manual-row' }, manualId, manualAdd),
-          h('div', { class: 'row' }, addUnderBudget, clearSelection, budgetFacts),
-          h('label', { class: 'budget-slider' }, 'Budget (estimated $ per model per call)', budget),
-          h('div', { class: 'quick-add-block' },
-            h('p', { class: 'section-label' }, 'Quick add'),
-            quickChips,
+          h('div', { class: 'pane-head' },
+            h('p', { class: 'section-label' }, 'Selected'),
+            selectedFacts,
+            clearSelection,
           ),
+          h('div', { class: 'selected-list-wrap' }, selected),
+          // One row, not three: a button, the slider it reads, and the count
+          // it would add. Each of these owned a full row of a column whose
+          // list had no height left.
+          h('div', { class: 'budget-row' }, addUnderBudget, budget, budgetFacts),
+          quickAddBlock,
         ),
       ),
     )
@@ -583,13 +632,17 @@ export function buildModelsStage(host: ModelsStageHost): ModelsStage {
 
   return {
     el,
+    currentBaseUrl() {
+      const preset = presetById(host.read().state.presetId)
+      return preset.customBase ? refs.customBase.value.trim() : preset.provider.api.baseUrl
+    },
     sync,
     applyRestored() {
       const read = host.read()
       const preset = presetById(read.state.presetId)
       refs.preset.value = read.state.presetId
       refs.customBase.value = read.state.customBase || ''
-      refs.customBase.hidden = !preset.customBase
+      refs.customBaseField.hidden = !preset.customBase
       refs.keyInput.placeholder = preset.keyLabel
       refs.keyInput.value = read.apiKey || ''
       refs.remember.checked = read.state.keyRemember ?? false
