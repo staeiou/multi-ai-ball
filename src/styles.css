@@ -1,0 +1,122 @@
+
+/* --- step wizard ----------------------------------------------------------- */
+
+.wizard-nav {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding: 2px 0;
+}
+
+.step-chip {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font: 600 12.5px/1 inherit;
+  cursor: pointer;
+}
+
+.step-chip.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--text);
+}
+
+.step-chip.done {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 40%, var(--border));
+}
+
+.step-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.step {
+  display: none;
+}
+
+.step.active {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  overflow-y: auto;
+}
+
+.wizard-buttons {
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 0 12px;
+}
+
+/* --- sheet preview ---------------------------------------------------------- */
+
+.sheet-preview {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.preview-header {
+  display: grid;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.preview-cols code {
+  font-family: var(--mono);
+  background: var(--primary-soft);
+  padding: 1px 4px;
+  border-radius: 4px;
+  margin-right: 3px;
+}
+
+.preview-warn {
+  color: var(--err);
+}
+
+.preview-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.preview-row select {
+  width: 180px;
+  flex-shrink: 0;
+}
+
+.preview-prompt {
+  flex: 1;
+  min-width: 280px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.preview-prompt p {
+  margin: 0 0 4px;
+}
+
+.preview-label {
+  color: var(--primary);
+  font-weight: 700;
+}

@@ -1,0 +1,139 @@
+{
+  "id": "huggingface-chat",
+  "name": "Hugging Face Chat Completions",
+  "endpoint": "/v1/chat/completions",
+  "usageExtraction": {
+    "promptTokensPath": "usage.prompt_tokens",
+    "completionTokensPath": "usage.completion_tokens",
+    "totalTokensPath": "usage.total_tokens"
+  },
+  "structuredOutput": {
+    "modeParameter": "response_format.type",
+    "requiresParameter": "response_format",
+    "ownedParameters": ["response_format.type", "response_format.json_schema"],
+    "modes": {
+      "json_object": {
+        "label": "JSON object",
+        "description": "Guarantees valid JSON, but does not enforce the prompt's response fields or their types.",
+        "parameters": {
+          "response_format.type": "json_object"
+        }
+      },
+      "json_schema": {
+        "label": "Structured output (JSON Schema)",
+        "description": "Enforces the response fields defined by this prompt. Auditomatic adds the generated schema to the request.",
+        "requiresSchema": true,
+        "parameters": {
+          "response_format.type": "json_schema",
+          "response_format.json_schema": {
+            "name": "{{SCHEMA_NAME}}",
+            "strict": true,
+            "schema": "{{SCHEMA}}"
+          }
+        }
+      }
+    }
+  },
+  "modelRules": [
+    {
+      "pattern": ".*",
+      "name": "Hugging Face Inference Providers Models",
+      "params": {
+        "temperature": {
+          "type": "number",
+          "description": "Predictability (0 = minimum variation, 1 = model default, 2 = max variation)",
+          "min": 0,
+          "max": 2,
+          "default": 0,
+          "basic": true
+        },
+        "max_tokens": {
+          "type": "integer",
+          "description": "Maximum response length (1 token ≈ 3-4 characters)",
+          "min": 1,
+          "default": 2048,
+          "is_output_length": true,
+          "basic": true
+        },
+        "frequency_penalty": {
+          "type": "number",
+          "description": "Frequency penalty (-2 = encourage repetition, 0 = off, 2 = max)",
+          "min": -2,
+          "max": 2,
+          "basic": false
+        },
+        "presence_penalty": {
+          "type": "number",
+          "description": "Presence penalty (-2 = encourage repetition, 0 = off, 2 = max)",
+          "min": -2,
+          "max": 2,
+          "basic": false
+        },
+        "top_p": {
+          "type": "number",
+          "description": "Nucleus sampling (0.1 = top 10%, 0.9 = focused, 1 = all tokens)",
+          "min": 0,
+          "max": 1,
+          "basic": false
+        },
+        "reasoning_effort": {
+          "type": "string",
+          "description": "Constrains effort on reasoning for models that support it. Support and defaults are provider- and model-dependent.",
+          "enum": [
+            "none",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "basic": false
+        },
+        "response_format": {
+          "type": "object",
+          "description": "Return a valid JSON object. This does not enforce specific fields or types; instruct the model to return JSON in the prompt.",
+          "basic": true,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "json_object",
+                "json_schema"
+              ],
+              "basic": true
+            }
+          }
+        }
+      },
+      "systemPromptConfig": {
+        "mode": "message",
+        "role": "system"
+      }
+    }
+  ],
+  "responseModes": {
+    "text": {
+      "id": "text",
+      "label": "Text",
+      "description": "Standard text response",
+      "parameters": {},
+      "responseTransform": {
+        "contentPath": "choices[0].message.content",
+        "fallbackPaths": [
+          "choices[0].text",
+          "message.content"
+        ],
+        "errorPath": "error.message",
+        "reasoningPath": "choices[0].message.reasoning_content",
+        "reasoningFallbackPaths": [
+          "choices[0].message.reasoning"
+        ]
+      }
+    }
+  },
+  "bodyConstruction": {
+    "promptField": "messages",
+    "wrapAsArray": true,
+    "messageRole": "user"
+  }
+}

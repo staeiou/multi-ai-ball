@@ -1,0 +1,20 @@
+{
+  "id": "mistral",
+  "name": "Mistral AI",
+  "type": "api",
+  "baseUrl": "https://api.mistral.ai",
+  "auth": {
+    "type": "bearer",
+    "header": "Authorization",
+    "envVar": "MISTRAL_API_KEY"
+  },
+  "execution": {
+    "defaultConcurrency": 1,
+    "maxConcurrency": 32,
+    "timeout": 180000,
+    "description": "Mistral AI - French AI leader"
+  },
+  "headers": {
+    "Content-Type": "application/json"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "id": "openai",
+  "name": "OpenAI",
+  "type": "api",
+  "baseUrl": "https://api.openai.com",
+  "auth": {
+    "type": "bearer",
+    "header": "Authorization",
+    "envVar": "OPENAI_API_KEY"
+  },
+  "execution": {
+    "defaultConcurrency": 8,
+    "maxConcurrency": 64,
+    "timeout": 180000,
+    "description": "OpenAI API - high concurrency supported"
+  },
+  "headers": {
+    "Content-Type": "application/json"
+  }
+}

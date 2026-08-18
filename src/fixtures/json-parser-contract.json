@@ -1,0 +1,478 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "flat object",
+      "note": "The common case.",
+      "response": "{\"score\": 85, \"label\": \"good\"}",
+      "parsed": {
+        "score": 85,
+        "label": "good"
+      },
+      "columns": [
+        "parsed_label",
+        "parsed_score"
+      ],
+      "cells": {
+        "parsed_label": "good",
+        "parsed_score": 85
+      }
+    },
+    {
+      "name": "markdown fenced",
+      "note": "Fences are outside the braces, so scanning handles them.",
+      "response": "```json\n{\"score\": 85, \"label\": \"good\"}\n```",
+      "parsed": {
+        "score": 85,
+        "label": "good"
+      },
+      "columns": [
+        "parsed_label",
+        "parsed_score"
+      ],
+      "cells": {
+        "parsed_label": "good",
+        "parsed_score": 85
+      }
+    },
+    {
+      "name": "prose around object",
+      "response": "Here is my analysis: {\"score\": 85, \"label\": \"good\"} hope that helps",
+      "parsed": {
+        "score": 85,
+        "label": "good"
+      },
+      "columns": [
+        "parsed_label",
+        "parsed_score"
+      ],
+      "cells": {
+        "parsed_label": "good",
+        "parsed_score": 85
+      }
+    },
+    {
+      "name": "two objects, larger wins",
+      "note": "Selection is by key count.",
+      "response": "{\"a\": 1} and {\"score\": 85, \"conf\": 0.9, \"cat\": \"x\"}",
+      "parsed": {
+        "score": 85,
+        "conf": 0.9,
+        "cat": "x"
+      },
+      "columns": [
+        "parsed_cat",
+        "parsed_conf",
+        "parsed_score"
+      ],
+      "cells": {
+        "parsed_cat": "x",
+        "parsed_conf": 0.9,
+        "parsed_score": 85
+      }
+    },
+    {
+      "name": "two objects, tie takes later",
+      "note": "Later object wins a tie; the last answer is usually the intended one.",
+      "response": "{\"a\": 1, \"b\": 2} then {\"x\": 10, \"y\": 20}",
+      "parsed": {
+        "x": 10,
+        "y": 20
+      },
+      "columns": [
+        "parsed_x",
+        "parsed_y"
+      ],
+      "cells": {
+        "parsed_x": 10,
+        "parsed_y": 20
+      }
+    },
+    {
+      "name": "nested depth 2",
+      "note": "Parent and leaf both become columns.",
+      "response": "{\"a\": {\"b\": 1}, \"z\": 9}",
+      "parsed": {
+        "a": {
+          "b": 1
+        },
+        "z": 9
+      },
+      "columns": [
+        "parsed_a",
+        "parsed_a.b",
+        "parsed_z"
+      ],
+      "cells": {
+        "parsed_a": "{\"b\":1}",
+        "parsed_a.b": 1,
+        "parsed_z": 9
+      }
+    },
+    {
+      "name": "nested depth 3",
+      "note": "Every node is a column; subtrees carry compact JSON.",
+      "response": "{\"outer\": {\"mid\": {\"leaf\": 1}}, \"z\": 9}",
+      "parsed": {
+        "outer": {
+          "mid": {
+            "leaf": 1
+          }
+        },
+        "z": 9
+      },
+      "columns": [
+        "parsed_outer",
+        "parsed_outer.mid",
+        "parsed_outer.mid.leaf",
+        "parsed_z"
+      ],
+      "cells": {
+        "parsed_outer": "{\"mid\":{\"leaf\":1}}",
+        "parsed_outer.mid": "{\"leaf\":1}",
+        "parsed_outer.mid.leaf": 1,
+        "parsed_z": 9
+      }
+    },
+    {
+      "name": "nested depth 4",
+      "note": "Depth cap is 4.",
+      "response": "{\"a\": {\"b\": {\"c\": {\"d\": 1}}}, \"z\": 9}",
+      "parsed": {
+        "a": {
+          "b": {
+            "c": {
+              "d": 1
+            }
+          }
+        },
+        "z": 9
+      },
+      "columns": [
+        "parsed_a",
+        "parsed_a.b",
+        "parsed_a.b.c",
+        "parsed_a.b.c.d",
+        "parsed_z"
+      ],
+      "cells": {
+        "parsed_a": "{\"b\":{\"c\":{\"d\":1}}}",
+        "parsed_a.b": "{\"c\":{\"d\":1}}",
+        "parsed_a.b.c": "{\"d\":1}",
+        "parsed_a.b.c.d": 1,
+        "parsed_z": 9
+      }
+    },
+    {
+      "name": "nesting beyond max depth",
+      "note": "Depth cap: e is not its own column; d carries compact JSON.",
+      "response": "{\"a\": {\"b\": {\"c\": {\"d\": {\"e\": 1}}}}}",
+      "parsed": {
+        "a": {
+          "b": {
+            "c": {
+              "d": {
+                "e": 1
+              }
+            }
+          }
+        }
+      },
+      "columns": [
+        "parsed_a",
+        "parsed_a.b",
+        "parsed_a.b.c",
+        "parsed_a.b.c.d"
+      ],
+      "cells": {
+        "parsed_a": "{\"b\":{\"c\":{\"d\":{\"e\":1}}}}",
+        "parsed_a.b": "{\"c\":{\"d\":{\"e\":1}}}",
+        "parsed_a.b.c": "{\"d\":{\"e\":1}}",
+        "parsed_a.b.c.d": "{\"e\":1}"
+      }
+    },
+    {
+      "name": "brace inside string value",
+      "note": "Scanner is string-aware.",
+      "response": "{\"note\": \"use { and } chars\", \"score\": 85}",
+      "parsed": {
+        "note": "use { and } chars",
+        "score": 85
+      },
+      "columns": [
+        "parsed_note",
+        "parsed_score"
+      ],
+      "cells": {
+        "parsed_note": "use { and } chars",
+        "parsed_score": 85
+      }
+    },
+    {
+      "name": "array at top level",
+      "note": "Arrays are not unstackable objects.",
+      "response": "[1, 2, 3]",
+      "parsed": null,
+      "columns": [],
+      "cells": {}
+    },
+    {
+      "name": "no JSON at all",
+      "response": "Just plain prose with no object.",
+      "parsed": null,
+      "columns": [],
+      "cells": {}
+    },
+    {
+      "name": "empty object",
+      "note": "Parses, but yields no columns.",
+      "response": "{}",
+      "parsed": {},
+      "columns": [],
+      "cells": {}
+    },
+    {
+      "name": "null and empty-string values",
+      "note": "null becomes an empty cell; 0 and false are real values.",
+      "response": "{\"a\": null, \"b\": \"\", \"c\": 0, \"d\": false}",
+      "parsed": {
+        "a": null,
+        "b": "",
+        "c": 0,
+        "d": false
+      },
+      "columns": [
+        "parsed_a",
+        "parsed_b",
+        "parsed_c",
+        "parsed_d"
+      ],
+      "cells": {
+        "parsed_a": null,
+        "parsed_b": "",
+        "parsed_c": 0,
+        "parsed_d": false
+      }
+    },
+    {
+      "name": "array value",
+      "note": "Array leaves become compact JSON, not columns.",
+      "response": "{\"tags\": [\"x\", \"y\"], \"score\": 85}",
+      "parsed": {
+        "tags": [
+          "x",
+          "y"
+        ],
+        "score": 85
+      },
+      "columns": [
+        "parsed_score",
+        "parsed_tags"
+      ],
+      "cells": {
+        "parsed_score": 85,
+        "parsed_tags": "[\"x\",\"y\"]"
+      }
+    },
+    {
+      "name": "duplicate keys, last wins",
+      "note": "RFC 8259 leaves this to the parser; JS and Python both keep the last.",
+      "response": "{\"a\": 1, \"a\": 2}",
+      "parsed": {
+        "a": 2
+      },
+      "columns": [
+        "parsed_a"
+      ],
+      "cells": {
+        "parsed_a": 2
+      }
+    },
+    {
+      "name": "trailing comma",
+      "note": "RECOVERED by repair: syntactically broken but complete JSON.",
+      "response": "{\"score\": 85, \"label\": \"good\",}",
+      "parsed": {
+        "score": 85,
+        "label": "good"
+      },
+      "columns": [
+        "parsed_label",
+        "parsed_score"
+      ],
+      "cells": {
+        "parsed_label": "good",
+        "parsed_score": 85
+      }
+    },
+    {
+      "name": "single-quoted strings",
+      "note": "RECOVERED by repair.",
+      "response": "{'score': 85}",
+      "parsed": {
+        "score": 85
+      },
+      "columns": [
+        "parsed_score"
+      ],
+      "cells": {
+        "parsed_score": 85
+      }
+    },
+    {
+      "name": "unquoted keys",
+      "note": "RECOVERED by repair.",
+      "response": "{score: 85, label: \"good\"}",
+      "parsed": {
+        "score": 85,
+        "label": "good"
+      },
+      "columns": [
+        "parsed_label",
+        "parsed_score"
+      ],
+      "cells": {
+        "parsed_label": "good",
+        "parsed_score": 85
+      }
+    },
+    {
+      "name": "smart quotes",
+      "note": "RECOVERED by repair.",
+      "response": "{“score”: 85}",
+      "parsed": {
+        "score": 85
+      },
+      "columns": [
+        "parsed_score"
+      ],
+      "cells": {
+        "parsed_score": 85
+      }
+    },
+    {
+      "name": "python literals",
+      "note": "RECOVERED by repair. RECORDED DIVERGENCE: JS jsonrepair maps None to real null; the Python json_repair keeps it as the STRING \"None\". The corpus canonicalizes to the app (JS) value; the Python twin's --verify-parsers skips this case.",
+      "response": "{\"ok\": True, \"n\": None}",
+      "parsed": {
+        "ok": true,
+        "n": null
+      },
+      "columns": [
+        "parsed_n",
+        "parsed_ok"
+      ],
+      "cells": {
+        "parsed_n": null,
+        "parsed_ok": true
+      }
+    },
+    {
+      "name": "unescaped quote in string",
+      "note": "RECOVERED by repair: the most likely real-world loss.",
+      "response": "{\"quote\": \"he said \"hi\" loudly\", \"score\": 85}",
+      "parsed": {
+        "quote": "he said \"hi\" loudly",
+        "score": 85
+      },
+      "columns": [
+        "parsed_quote",
+        "parsed_score"
+      ],
+      "cells": {
+        "parsed_quote": "he said \"hi\" loudly",
+        "parsed_score": 85
+      }
+    },
+    {
+      "name": "truncated at max_tokens",
+      "note": "STILL REJECTED: the scanner requires a closing brace to form a candidate at all, so a truncated response never reaches repair.",
+      "response": "{\"score\": 85, \"rationale\": \"it was quite",
+      "parsed": null,
+      "columns": [],
+      "cells": {}
+    },
+    {
+      "name": "NaN literal",
+      "note": "RECORDED DIVERGENCE: JS jsonrepair quotes NaN into the string \"NaN\"; the Python json_repair parses it as a real float and is then rejected → PARSER_ERROR. The corpus canonicalizes to the app (JS) value; the Python twin's --verify-parsers skips this case.",
+      "response": "{\"n\": NaN}",
+      "parsed": {
+        "n": "NaN"
+      },
+      "columns": [
+        "parsed_n"
+      ],
+      "cells": {
+        "parsed_n": "NaN"
+      }
+    },
+    {
+      "name": "Infinity literal",
+      "note": "RECORDED DIVERGENCE, same as NaN.",
+      "response": "{\"n\": Infinity}",
+      "parsed": {
+        "n": "Infinity"
+      },
+      "columns": [
+        "parsed_n"
+      ],
+      "cells": {
+        "parsed_n": "Infinity"
+      }
+    },
+    {
+      "name": "integer beyond 2^53",
+      "note": "JS rounds to float64; the Python twin keeps exact ints. Recorded divergence.",
+      "response": "{\"n\": 12345678901234567890}",
+      "parsed": {
+        "n": 12345678901234567000
+      },
+      "columns": [
+        "parsed_n"
+      ],
+      "cells": {
+        "parsed_n": 12345678901234567000
+      }
+    },
+    {
+      "name": "integer-like keys",
+      "note": "Key order varies by language; sorted column order makes it moot.",
+      "response": "{\"b\": 1, \"2\": 2, \"a\": 3, \"10\": 4}",
+      "parsed": {
+        "2": 2,
+        "10": 4,
+        "b": 1,
+        "a": 3
+      },
+      "columns": [
+        "parsed_10",
+        "parsed_2",
+        "parsed_a",
+        "parsed_b"
+      ],
+      "cells": {
+        "parsed_10": 4,
+        "parsed_2": 2,
+        "parsed_a": 3,
+        "parsed_b": 1
+      }
+    },
+    {
+      "name": "unicode and escapes",
+      "note": "Escapes resolve identically under RFC 8259.",
+      "response": "{\"emoji\": \"\\ud83d\\ude00\", \"tab\": \"a\\tb\"}",
+      "parsed": {
+        "emoji": "😀",
+        "tab": "a\tb"
+      },
+      "columns": [
+        "parsed_emoji",
+        "parsed_tab"
+      ],
+      "cells": {
+        "parsed_emoji": "😀",
+        "parsed_tab": "a\tb"
+      }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#2f6fed"/>
+  <text x="212" y="270" font-family="system-ui, sans-serif" font-size="150" font-weight="800" fill="#ffffff" text-anchor="middle">Mult</text>
+  <text x="410" y="215" font-family="system-ui, sans-serif" font-size="86" font-weight="800" fill="#cfe0ff" text-anchor="middle">A</text>
+  <line x1="360" y1="255" x2="470" y2="355" stroke="#cfe0ff" stroke-width="14"/>
+  <text x="410" y="405" font-family="system-ui, sans-serif" font-size="86" font-weight="800" fill="#cfe0ff" text-anchor="middle">I</text>
+</svg>

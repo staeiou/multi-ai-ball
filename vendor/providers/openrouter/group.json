@@ -1,0 +1,22 @@
+{
+  "id": "openrouter",
+  "name": "OpenRouter",
+  "type": "api",
+  "baseUrl": "https://openrouter.ai",
+  "auth": {
+    "type": "bearer",
+    "header": "Authorization",
+    "envVar": "OPENROUTER_API_KEY"
+  },
+  "execution": {
+    "defaultConcurrency": 6,
+    "maxConcurrency": 32,
+    "timeout": 300000,
+    "description": "OpenRouter API - aggregated model access"
+  },
+  "headers": {
+    "Content-Type": "application/json",
+    "HTTP-Referer": "https://auditomatic.org",
+    "X-Title": "Auditomatic Lite"
+  }
+}
