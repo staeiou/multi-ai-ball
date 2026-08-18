@@ -78,19 +78,11 @@ body {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 6px 50px;
+  /* No vertical padding: the header is chrome, and every pixel here is a pixel
+     the stage below does not get. Its height is exactly its tallest child. */
+  padding: 0 50px;
   border-bottom: 1px solid var(--border);
   background: var(--card);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  white-space: nowrap;
-  font-weight: 800;
-  font-size: 19px;
-  letter-spacing: -0.02em;
-  color: var(--text);
 }
 
 .header-utils {
@@ -121,6 +113,9 @@ body {
 }
 
 .brand {
+  /* An <h1>, so it carries a 0.67em UA margin -- 37px of whitespace top and
+     bottom that nothing else on the page asked for. */
+  margin: 0;
   display: flex;
   align-items: center;
   white-space: nowrap;
@@ -739,8 +734,6 @@ textarea.input {
 
 /* --- single-purpose stages ------------------------------------------------- */
 
-.wizard-nav { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--border); padding: 12px 0; }
-.step-chip { padding: 8px 14px; }
 /* No floor: the step is a flex child of .app-main and already fills it. A
    720px minimum made every stage taller than the viewport, so the page
    scrolled behind .app-main's `overflow: hidden` and clipped instead. */

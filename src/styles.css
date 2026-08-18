@@ -1,13 +1,16 @@
 
 /* --- step wizard ----------------------------------------------------------- */
 
+/* A flex child of the fixed-height .app-header, so it needs no padding of its
+   own -- its height is the chips' height -- and no sticky/border/background:
+   nothing scrolls behind it and .app-header already draws the rule. */
 .wizard-nav {
   flex: 1;
   min-width: 0;
   display: flex;
   gap: 5px;
   overflow-x: auto;
-  padding: 2px 0;
+  padding: 0;
 }
 
 .step-chip {
@@ -16,7 +19,7 @@
   background: var(--card);
   color: var(--muted);
   border-radius: 999px;
-  padding: 5px 12px;
+  padding: 8px 14px;
   font: 600 12.5px/1 inherit;
   cursor: pointer;
 }
