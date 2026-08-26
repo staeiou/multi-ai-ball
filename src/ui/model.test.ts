@@ -95,6 +95,15 @@ describe('planFingerprint', () => {
     const s = session({ sheetRowCount: 0 })
     expect(fp(state({ prompt: 'x', selected: ['a', 'b'] }), s)).toBe(fp(state({ prompt: 'x', selected: ['a', 'b'] }), s))
   })
+
+  it('detects changes anywhere in a long run configuration', () => {
+    const s = session()
+    const base = state({ prompt: `prefix-${'x'.repeat(2200)}`, selected: ['a'] })
+    const one = fp(base, s)
+    expect(fp({ ...base, prompt: `${base.prompt.slice(0, -1)}y` }, s)).not.toBe(one)
+    expect(fp({ ...base, system: 'changed' }, s)).not.toBe(one)
+    expect(fp({ ...base, params: { temperature: 0.2 } }, s)).not.toBe(one)
+  })
 })
 
 describe('stageGate', () => {

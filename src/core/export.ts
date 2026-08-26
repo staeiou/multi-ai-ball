@@ -68,7 +68,7 @@ export function buildRows(
   for (const result of results) {
     const text = responseText(result)
     const parsed = parserId ? parseWithBuiltin(parserId, text) : null
-    parsedValues.push(typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? parsed : null)
+    parsedValues.push(typeof parsed === 'symbol' ? null : parsed)
     parsedObjects.push(typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null)
   }
 

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { buildRunSpecs, shouldStream, RunController } from './run'
 import { presetById } from './providers'
+import { naiveTokenCount } from './tokenizer'
 import type { CallResult, RowProgress, RunSpec } from './types'
 
 afterEach(() => {
@@ -167,6 +168,32 @@ describe('buildRunSpecs', () => {
     expect(specs[0].system).toContain('<output-format>')
     expect(specs[0].system).toContain('- score (number)')
     expect(specs[0].extraParams?.['response_format.type']).toBe('json_schema')
+  })
+
+  it('counts contract instructions in the input-token estimate', async () => {
+    const openai = presetById('openai-chat')
+    const { specs, inputTokens } = await buildRunSpecs({
+      provider: openai.provider,
+      apiKey: '',
+      models: [{ id: 'gpt-4o-mini' }],
+      selected: ['gpt-4o-mini'],
+      repeats: 1,
+      params: {},
+      zdr: false,
+      stream: false,
+      streamThreshold: 100,
+      plan: {
+        source: { kind: 'single' },
+        template: 'Rate it',
+        systemTemplate: '',
+        cases: [{ id: 'case0', label: 'Input', bindings: {} }],
+      },
+      contractAuthoring: { fields: [{ name: 'score', type: 'number', description: 'A score from zero to one hundred.' }] },
+      contractPlacement: 'system-after',
+      strictJson: true,
+    })
+    expect(inputTokens[0]).toBe(naiveTokenCount(`${specs[0]!.system}\n${specs[0]!.prompt}`))
+    expect(inputTokens[0]).toBeGreaterThan(naiveTokenCount('\nRate it'))
   })
 
   it('never streams beyond the threshold and renders per-row bindings for sheets', async () => {

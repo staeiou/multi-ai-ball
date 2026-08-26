@@ -24,6 +24,51 @@ async function advanceModelsToReview(page: import('@playwright/test').Page): Pro
 }
 
 test.describe('mock provider flow', () => {
+  test('saved templates remain visible and can be loaded', async ({ page }) => {
+    await page.goto('/')
+    await page.fill('textarea[data-field="prompt"]', 'Original prompt')
+    await page.click('text=Next →')
+
+    await page.fill('input[placeholder="Template name"]', 'My template')
+    await page.click('text=Save as template')
+    const templateSelect = page.locator('.step.active select').filter({ has: page.locator('option', { hasText: 'My template' }) })
+    await expect(templateSelect).toHaveCount(1)
+
+    await page.click('text=← Back')
+    await page.fill('textarea[data-field="prompt"]', 'Changed prompt')
+    await page.click('text=Next →')
+    await templateSelect.selectOption({ label: 'My template' })
+    await page.click('text=← Back')
+    await expect(page.locator('textarea[data-field="prompt"]')).toHaveValue('Original prompt')
+  })
+
+  test('backup restores a completed run as completed results', async ({ page }) => {
+    await page.goto('/')
+    await advanceToProvider(page, 'Remember this run')
+    await fillCustomProvider(page)
+    await page.click(`.pick-col .model-row:has-text("stub-echo")`)
+    await advanceModelsToReview(page)
+    await page.click('button.run-button')
+    await expect(page.locator('.final-table .response-text')).toContainText('Remember this run')
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('text=Backup'),
+    ])
+    const backupPath = await download.path()
+    expect(backupPath).not.toBeNull()
+
+    page.once('dialog', dialog => dialog.accept())
+    await page.click('text=New prompt')
+    await expect(page.locator('.step.active h2')).toHaveText('Prompt')
+
+    page.once('dialog', dialog => dialog.accept())
+    await page.setInputFiles('input[type=file][accept=".zip"]', backupPath!)
+    await expect(page.locator('.step.active h2')).toHaveText('Results')
+    await expect(page.locator('.final-table .response-text')).toContainText('Remember this run')
+    await expect(page.locator('.final-table')).toContainText('ok')
+  })
+
   test('loads models, runs a prompt across two models, and exports CSV', async ({ page }) => {
     await page.goto('/')
     // This is a true stage wizard, not a long page with all sections stacked.

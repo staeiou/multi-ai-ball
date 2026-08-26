@@ -4,7 +4,6 @@
 // back, change provider, come forward) cannot leave the UI believing
 // something that the run pipeline will not honor.
 
-import { buildContractContext } from '../core/contract'
 import type {
   CaseSource,
   ContractAuthoring,
@@ -77,7 +76,6 @@ export function planFingerprint(input: {
   sheetTemplate: string
 }): string {
   const { state, session } = input
-  const contract = buildContractContext(state.contract)
   const seed = {
     p: state.prompt,
     s: state.system,
@@ -92,9 +90,7 @@ export function planFingerprint(input: {
     para: state.params,
     z: state.zdr,
   }
-  return JSON.stringify(seed).length > 2000
-    ? `${seed.p.slice(0, 64)}|fields:${contract?.columnCount ?? state.contract.fields?.length ?? 0}|${seed.m.join(',')}|${seed.r}|${seed.t}`
-    : JSON.stringify(seed)
+  return JSON.stringify(seed)
 }
 
 /** The question each stage must answer before the user may advance. Pure:

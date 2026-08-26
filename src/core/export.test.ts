@@ -91,6 +91,14 @@ describe('buildRows', () => {
     const { rows } = buildRows(META, specs(), results, 'json-unstack')
     expect(rows[0]!.parsed_n).toBe(85)
   })
+
+  it('preserves scalar parser results in the Parsed column', () => {
+    const results: CallResult[] = [
+      { model: 'a', status: 'ok', parts: [{ kind: 'text', text: 'Score: 85' }] },
+    ]
+    const { rows } = buildRows(META, specs(), results, 'first-number')
+    expect(rows[0]!.parsed).toBe(85)
+  })
 })
 
 describe('writers', () => {

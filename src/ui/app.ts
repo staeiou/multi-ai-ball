@@ -296,7 +296,7 @@ function contractCard(): HTMLElement {
 
   const templateName = h('input', { class: 'input', placeholder: 'Template name' })
   const saveTemplate = h('button', { class: 'btn', type: 'button' }, 'Save as template')
-  const templateSelect = h('select', { class: 'input' }, h('option', { value: '' }, 'Load a saved template…'))
+  const templateSelect = h('select', { class: 'input', style: 'flex:1' }, h('option', { value: '' }, 'Load a saved template…'))
   const deleteTemplate = h('button', { class: 'btn ghost', type: 'button' }, 'Delete')
 
   refs.contractFields = fields
@@ -329,7 +329,7 @@ function contractCard(): HTMLElement {
     h('div', { class: 'row' },
       templateName,
       saveTemplate,
-      h('select', { class: 'input', style: 'flex:1' }, ...(templates.length ? templates.map(t => h('option', { value: t.id }, t.name)) : [h('option', { value: '' }, 'No saved templates')])),
+      templateSelect,
       deleteTemplate,
     ),
   )
@@ -1171,7 +1171,7 @@ async function runBackup(): Promise<void> {
   const backup: BackupFile = {
     version: 1,
     createdAt: new Date().toISOString(),
-    state: { ...state, keyRemember: true },
+    state: { ...state },
     templates,
     recent: loadRecent(),
     run: runMeta && specs.length ? { meta: runMeta, specs, results } : null,
@@ -1195,6 +1195,7 @@ async function runRestore(): Promise<void> {
       Object.assign(state, defaultState(), backup.state)
       apiKey = ''
       modelsCarriedBy = ''
+      saveState(state)
     }
     if (Array.isArray(backup.templates)) {
       templates = backup.templates
@@ -1209,13 +1210,14 @@ async function runRestore(): Promise<void> {
       runMeta = backup.run.meta
       resultsFingerprint = 'restored'
       if (!grid) grid = new ResultsGrid(refs.resultsGrid)
-      grid.reset(results, specs.map(s => s.caseLabel))
+      grid.showCompleted(runMeta, specs, results, runMeta.parserId)
       refs.exportXlsx.disabled = false
       refs.exportCsv.disabled = false
       refs.exportJsonl.disabled = false
       refs.exportPy.disabled = false
     }
     applyRestoredState()
+    if (backup.run) wizard?.goTo(5)
     alert('Backup restored.')
   } catch (error) {
     alert(`Restore failed: ${(error as Error).message}`)

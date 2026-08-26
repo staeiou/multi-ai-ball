@@ -77,24 +77,24 @@ const TOKEN_WORKER_CASE_LIMIT = 200
  * allowed to exist (the wire edge). Pure: no DOM, unit-testable. */
 export async function buildRunSpecs(options: RunSpecOptions): Promise<RunPlan> {
   const ctx = buildContractContext(options.contractAuthoring)
-  const caseTokens = await tokenCountsPerCase(options.plan)
+  const renderedCases = options.plan.cases.map(c => {
+    const userPrompt = renderPromptTemplate(options.plan.template, c.bindings)
+    const systemPrompt = renderPromptTemplate(options.plan.systemTemplate, c.bindings)
+    return ctx
+      ? compileContractChannels(options.contractAuthoring, options.contractPlacement, userPrompt, systemPrompt)
+      : { userPrompt, systemPrompt }
+  })
+  const caseTokens = await tokenCountsPerCase(renderedCases)
   const modelById = new Map(options.models.map(model => [model.id, model]))
   const totalCalls = options.plan.cases.length * options.selected.length * options.repeats
 
   const specs: RunSpec[] = []
   const inputTokens: number[] = []
   options.plan.cases.forEach((c, caseIndex) => {
-    const renderedSystem = renderPromptTemplate(options.plan.systemTemplate, c.bindings)
+    const rendered = renderedCases[caseIndex]!
     for (const modelId of options.selected) {
       const model = modelById.get(modelId)
       for (let repeat = 0; repeat < options.repeats; repeat++) {
-        let userPrompt = renderPromptTemplate(options.plan.template, c.bindings)
-        let systemPrompt = renderedSystem
-        if (ctx) {
-          const channels = compileContractChannels(options.contractAuthoring, options.contractPlacement, userPrompt, systemPrompt)
-          userPrompt = channels.userPrompt
-          systemPrompt = channels.systemPrompt
-        }
         specs.push({
           provider: options.provider,
           apiKey: options.apiKey,
@@ -102,8 +102,8 @@ export async function buildRunSpecs(options: RunSpecOptions): Promise<RunPlan> {
           supportedParams: model?.supportedParams,
           params: options.params,
           extraParams: ctx ? buildContractParams(options.provider, modelId, ctx, options.strictJson) : undefined,
-          prompt: userPrompt,
-          system: systemPrompt,
+          prompt: rendered.userPrompt,
+          system: rendered.systemPrompt,
           stream: options.stream && totalCalls <= options.streamThreshold,
           zdr: options.zdr,
           caseLabel: c.label,
@@ -119,12 +119,13 @@ export async function buildRunSpecs(options: RunSpecOptions): Promise<RunPlan> {
 
 /** Token counts per case through the worker; naive byte-count beyond the
  * worker budget, and as the worker's own failure fallback. */
-async function tokenCountsPerCase(plan: CaseSourcePlan): Promise<number[]> {
-  const perCase = await Promise.all(plan.cases.slice(0, TOKEN_WORKER_CASE_LIMIT).map(async c =>
-    countTokens(`${renderPromptTemplate(plan.systemTemplate, c.bindings)}\n${renderPromptTemplate(plan.template, c.bindings)}`),
+async function tokenCountsPerCase(cases: Array<{ userPrompt: string; systemPrompt: string }>): Promise<number[]> {
+  const perCase = await Promise.all(cases.slice(0, TOKEN_WORKER_CASE_LIMIT).map(async c =>
+    countTokens(`${c.systemPrompt}\n${c.userPrompt}`),
   ))
-  while (perCase.length < plan.cases.length) {
-    perCase.push(naiveTokenCount(plan.systemTemplate + plan.template))
+  while (perCase.length < cases.length) {
+    const c = cases[perCase.length]!
+    perCase.push(naiveTokenCount(`${c.systemPrompt}\n${c.userPrompt}`))
   }
   return perCase
 }
