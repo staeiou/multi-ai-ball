@@ -123,14 +123,20 @@ export function buildPromptScreen(store: Store, actions: Actions): Screen {
     sweepBox.replaceChildren(h('p', { class: 'muted small' }, 'Hold everything else constant and vary these. Use {{name}} in the prompt.'), list, h('div', { class: 'row' }, add, facts))
   }
 
+  let sheetKey = ''
   function renderSheet(data: AppData): void {
     if (data.state.flow !== 'sheet') return
     const { sheet, sheetError, loadingSheet } = data.session
     sheetFacts.textContent = loadingSheet ? 'Reading…' : sheetError ?? (sheet ? `${sheet.name}: ${sheet.rows.length.toLocaleString()} rows · ${sheet.columns.length} columns` : 'CSV, TSV, XLSX, JSON or JSONL. First row = column names.')
+    if (!sheet) { rolesBox.replaceChildren(); partitionBox.replaceChildren(); sheetKey = ''; return }
+    const { roles } = currentRows(data)
+    // The roles table and partition summary depend only on the sheet, the
+    // roles and the partition edits; a prompt keystroke must not rebuild them.
+    const key = JSON.stringify([sheet.name, sheet.rows.length, sheet.columns, roles, data.session.partitionOverride])
+    if (key === sheetKey) return
+    sheetKey = key
     rolesBox.replaceChildren()
     partitionBox.replaceChildren()
-    if (!sheet) return
-    const { roles } = currentRows(data)
     const table = h('table', { class: 'roles-table' })
     table.append(h('thead', {}, h('tr', {}, h('th', {}, 'Column'), h('th', {}, 'Role'), h('th', {}, 'First value'), h('th', {}, ''))))
     const body = h('tbody')

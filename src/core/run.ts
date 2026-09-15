@@ -59,6 +59,11 @@ export class RunController {
 
   constructor(private run: FrozenRun, private apiKey: string, private hooks: RunHooks = {}) {}
 
+  /** Start from rows already known (a reopened run): completed rows are kept. */
+  seed(rows: CallRow[]): void {
+    this.rows = [...rows]
+  }
+
   /** Rows to execute; by default every coordinate, or a subset (rerun failed). */
   async start(indices?: number[]): Promise<RunOutcome> {
     const run = this.run

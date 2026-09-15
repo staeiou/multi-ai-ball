@@ -159,6 +159,9 @@ export function buildModelsScreen(store: Store, actions: Actions): Screen {
     const chosen = new Set(data.state.selected.map(s => s.id))
     const list = sortByCost(visibleCatalog(data).filter(m => !chosen.has(m.id) && (!q || m.id.toLowerCase().includes(q))), inputsFor(data))
     listFacts.textContent = data.session.catalog.length ? String(list.length) : ''
+    // Picking a model re-renders both panes; keep the reader's place in a long list.
+    const wrap = available.parentElement
+    const scrollTop = wrap?.scrollTop ?? 0
     available.replaceChildren()
     if (list.length === 0) {
       available.append(h('p', { class: 'muted small' }, data.session.catalog.length ? 'No models match.' : 'No models loaded yet: connect a provider above.'))
@@ -167,6 +170,7 @@ export function buildModelsScreen(store: Store, actions: Actions): Screen {
     // Only the first 400 are drawn; the search box narrows a long catalog.
     for (const m of list.slice(0, 400)) available.append(row(m, m.id, 'available', data))
     if (list.length > 400) available.append(h('p', { class: 'muted small' }, `${list.length - 400} more: use the filter`))
+    if (wrap) wrap.scrollTop = scrollTop
   }
 
   function renderSelected(data: AppData): void {

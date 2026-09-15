@@ -73,6 +73,8 @@ export interface ReadResponse {
   costUsd?: number
   /** OpenRouter: which sub-provider served the call. */
   upstream?: string
+  /** Why generation stopped: 'stop'/'end_turn', 'length'/'max_tokens', ... */
+  finishReason?: string
   error?: string
 }
 
@@ -101,6 +103,7 @@ export function readResponse(shape: Shape, json: unknown): ReadResponse {
       promptTokens: input,
       completionTokens: output,
       totalTokens: input !== undefined && output !== undefined ? input + output : undefined,
+      finishReason: typeof record.stop_reason === 'string' ? record.stop_reason : undefined,
       error: errorMessage(record),
     }
   }
@@ -139,6 +142,7 @@ export function readResponse(shape: Shape, json: unknown): ReadResponse {
     totalTokens: num(usage.total_tokens),
     costUsd: num(usage.cost),
     upstream: typeof record.provider === 'string' ? record.provider : undefined,
+    finishReason: typeof choice?.finish_reason === 'string' ? choice.finish_reason : typeof choice?.native_finish_reason === 'string' ? choice.native_finish_reason : undefined,
     error: errorMessage(record),
   }
 }
@@ -157,4 +161,9 @@ export function errorMessage(json: unknown): string | undefined {
     if (message) return String(message)
   }
   return undefined
+}
+
+/** True when the provider stopped because the output limit was used up. */
+export function hitOutputLimit(finishReason: string | undefined): boolean {
+  return finishReason === 'length' || finishReason === 'max_tokens' || finishReason === 'max_output_tokens'
 }

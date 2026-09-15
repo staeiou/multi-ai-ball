@@ -1,62 +1,58 @@
-// OPT-IN live smoke: runs one cheap model per provider against the REAL API.
-// Skipped unless the matching E2E_<PROVIDER>_API_KEY variable is set:
+// OPT-IN live smoke: one cheap model per provider against the REAL API,
+// through the real screens. Skipped unless the matching key is set:
 //
-//   E2E_OPENROUTER_API_KEY=sk-or-... E2E_OPENAI_API_KEY=sk-... \
-//   E2E_ANTHROPIC_API_KEY=sk-ant-... npx playwright test live.spec.ts
+//   source ../auditomatic-lite/keys.secret; \
+//   E2E_OPENROUTER_API_KEY=$OPENROUTER_API_KEY E2E_OPENAI_API_KEY=$OPENAI_API_KEY \
+//   E2E_ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY npx playwright test tests/e2e/live.spec.ts
 //
-// Each case walks the actual wizard (Prompt → Output format → Provider →
-// Models → Run settings → Review & run), configures that provider, loads its
-// real model list (the critical CORS + auth + catalog-path check), selects
-// one cheap model, and runs a tiny prompt — asserting a real, non-degenerate
-// answer.
+// Each case loads the provider's real catalog (the CORS + auth + list-shape
+// check), picks a model that models.dev/the catalog reports as refusing
+// temperature, sets temperature anyway, and confirms the review screen
+// omits it with a reason and the run answers. That is the guidance layer's
+// most consequential claim exercised end to end.
 import { expect, test } from '@playwright/test'
 
 interface LiveCase {
   preset: string
   envKey: string
+  /** A model reported to refuse temperature (only its default). */
   model: string
   expectContains: string
 }
 
 const LIVE_CASES: LiveCase[] = [
-  { preset: 'openrouter', envKey: 'E2E_OPENROUTER_API_KEY', model: 'openai/gpt-4o-mini', expectContains: 'Paris' },
-  { preset: 'openai-chat', envKey: 'E2E_OPENAI_API_KEY', model: 'gpt-4o-mini', expectContains: 'Paris' },
-  { preset: 'anthropic', envKey: 'E2E_ANTHROPIC_API_KEY', model: 'claude-haiku-4-5-20251001', expectContains: 'Paris' },
+  { preset: 'openrouter', envKey: 'E2E_OPENROUTER_API_KEY', model: 'openai/gpt-5-nano', expectContains: 'Paris' },
+  { preset: 'openai', envKey: 'E2E_OPENAI_API_KEY', model: 'gpt-5-nano', expectContains: 'Paris' },
+  { preset: 'anthropic', envKey: 'E2E_ANTHROPIC_API_KEY', model: 'claude-sonnet-5', expectContains: 'Paris' },
 ]
 
 for (const live of LIVE_CASES) {
   const key = process.env[live.envKey]
   const describe = key ? test.describe : test.describe.skip
-  describe(`live: ${live.preset} (${live.envKey})`, () => {
-    test(`runs ${live.model} against the real API`, async ({ page }) => {
+  describe(`live: ${live.preset}`, () => {
+    test(`runs ${live.model} with temperature set, omitted per guidance`, async ({ page }) => {
       await page.goto('/')
-
-      // Step 1: prompt.
       await page.fill('textarea[data-field="prompt"]', 'What is the capital of France? Answer in one word.')
-      await page.click('text=Next →') // output format
-      await page.click('text=Next →') // provider
-
-      // Step 3: provider + key, then load the real catalog.
+      await page.click('button.wizard-next')
+      await page.click('button.wizard-next')
       await page.selectOption('.provider-band select', live.preset)
-      const keyInput = page.locator('input[placeholder*="API key"]')
-      await keyInput.fill(key!)
+      await page.fill('input[placeholder*="API key"]', key!)
       await page.click('text=Load models')
       await expect(page.locator('.pick-col .model-row').first()).toBeVisible({ timeout: 30_000 })
-      await expect(page.locator('span', { hasText: /models loaded/ })).toBeVisible()
-      await page.click('text=Next →') // models
-
-      // Step 4: select the cheap model, exact id (variant suffixes excluded).
+      await page.fill('input[placeholder*="Filter the loaded"]', live.model)
       await page.click(`.pick-col .model-row:has(.model-id:text-is("${live.model}"))`)
-      await page.click('text=Next →') // run settings
-      await page.click('text=Next →') // review & run
-
-      // The review stage owns the only Run action.
+      await page.click('button.wizard-next')
+      await page.fill('[data-field="temperature"]', '0.3')
+      await page.locator('[data-field="temperature"]').press('Tab')
+      await page.click('button.wizard-next')
+      const report = page.locator('.review-model')
+      await expect(report).toHaveCount(1, { timeout: 15_000 })
+      await report.locator('summary').click()
+      await expect(report.locator('.report-table tr.omitted').filter({ hasText: 'temperature' })).toHaveCount(1)
       await expect(page.locator('button.run-button')).toBeEnabled()
       await page.click('button.run-button')
-
-      await expect(page.locator('.grid-table .status.ok')).toHaveCount(1, { timeout: 120_000 })
-      const text = (await page.locator('.grid-table .response-text').textContent()) ?? ''
-      expect(text).toContain(live.expectContains)
+      await expect(page.locator('.status.ok')).toHaveCount(1, { timeout: 120_000 })
+      await expect(page.locator('.final-table')).toContainText(live.expectContains)
     })
   })
 }

@@ -6,6 +6,7 @@ import JSZip from 'jszip'
 
 import { fetchCatalog, fetchZdrModels } from '../core/catalog'
 import { parseSheetBytes } from '../core/cases'
+import type { SheetWorkerFailure, SheetWorkerResponse } from '../core/sheet.worker'
 import { buildCompletedDatasets, buildRows, download, fileStamp, plainColumns, toCSV, toJSONL, toXLSX, XLSX_MIME } from '../core/export'
 import { freezeRun } from '../core/freeze'
 import { presetById } from '../core/providers/presets'
@@ -83,16 +84,15 @@ export class Actions {
     this.store.update(d => { d.session.loadingSheet = true; d.session.sheetError = null })
     try {
       const buffer = await file.arrayBuffer()
-      const sha256 = await sha256Hex(new TextDecoder('latin1').decode(buffer))
-      const sheet = parseSheetBytes(buffer, file.name)
+      const parsed = await parseInWorker(buffer, file.name)
       this.store.update(d => {
-        d.session.sheet = sheet
-        d.session.sheetSource = { name: file.name, bytes: buffer.byteLength, sha256 }
+        d.session.sheet = { name: parsed.name, columns: parsed.columns, rows: parsed.rows }
+        d.session.sheetSource = { name: file.name, bytes: parsed.bytes, sha256: parsed.sha256 }
         d.session.partitionOverride = null
         d.session.loadingSheet = false
         // Keep roles the user already set for same-named columns; new columns are inputs.
         const roles: typeof d.state.roles = {}
-        for (const column of sheet.columns) roles[column] = d.state.roles[column] ?? 'input'
+        for (const column of parsed.columns) roles[column] = d.state.roles[column] ?? 'input'
         d.state.roles = roles
         d.state.flow = 'sheet'
       })
@@ -169,8 +169,8 @@ export class Actions {
         })
       },
     })
-    // Seed the controller with the rows we already have (resume keeps completed ones).
-    ;(this.controller as unknown as { rows: CallRow[] }).rows = [...this.store.session.rows]
+    // Resume keeps the rows already completed.
+    this.controller.seed(this.store.session.rows)
     this.store.update(d => { d.session.running = true; d.session.paused = false; d.session.statusLine = `Running ${done}/${total}` })
     const outcome = await this.controller.start(indices)
     this.controller = null
@@ -300,4 +300,24 @@ export class Actions {
 export function runLabel(frozen: FrozenRun): string {
   const what = frozen.source ? frozen.source.name : frozen.cases.length > 1 ? `${frozen.cases.length} cases` : 'one prompt'
   return `${what} × ${frozen.models.map(m => m.id).join(', ')}`
+}
+
+/** Parse in the worker when the browser has one; inline otherwise (tests). */
+function parseInWorker(buffer: ArrayBuffer, name: string): Promise<SheetWorkerResponse> {
+  if (typeof Worker === 'undefined') {
+    return sha256Hex(new TextDecoder('latin1').decode(buffer)).then(sha256 => {
+      const sheet = parseSheetBytes(buffer, name)
+      return { ok: true as const, name: sheet.name, columns: sheet.columns, rows: sheet.rows, sha256, bytes: buffer.byteLength }
+    })
+  }
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('../core/sheet.worker.ts', import.meta.url), { type: 'module' })
+    worker.addEventListener('message', (event: MessageEvent<SheetWorkerResponse | SheetWorkerFailure>) => {
+      worker.terminate()
+      if (event.data.ok) resolve(event.data)
+      else reject(new Error(event.data.error))
+    })
+    worker.addEventListener('error', event => { worker.terminate(); reject(new Error(event.message || 'worker failed')) })
+    worker.postMessage({ buffer, name }, [buffer])
+  })
 }

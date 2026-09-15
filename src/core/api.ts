@@ -5,7 +5,7 @@
 // with full jitter, honoring Retry-After. Non-streaming by design: the payload
 // promise is about request bodies, and a progress counter is the UI.
 
-import { errorMessage, readResponse } from './providers/shapes'
+import { errorMessage, hitOutputLimit, readResponse } from './providers/shapes'
 import type { RenderedCall } from './render'
 import { sha256Hex } from './render'
 import type { CallRow, FrozenModel } from './types'
@@ -108,7 +108,10 @@ export async function runCall(call: RenderedCall, model: FrozenModel, options: C
         return { ...base, status: 'error', httpStatus: response.status, latencyMs, error: read.error, raw }
       }
       if (read.text === null && read.parts.length === 0) {
-        return { ...base, status: 'error', httpStatus: response.status, latencyMs, error: 'Provider returned no content.', raw }
+        const message = hitOutputLimit(read.finishReason) || read.thinking
+          ? 'No answer: the maximum answer length was used up before the answer (reasoning models think first). Raise the maximum answer length in Run settings.'
+          : 'Provider returned no content.'
+        return { ...base, status: 'error', httpStatus: response.status, latencyMs, error: message, thinking: read.thinking, raw, ...(read.promptTokens !== undefined ? { promptTokens: read.promptTokens } : {}), ...(read.completionTokens !== undefined ? { completionTokens: read.completionTokens } : {}) }
       }
       const costUsd = read.costUsd ?? (read.promptTokens !== undefined && read.completionTokens !== undefined
         ? estimateCostUsd(model.guidance.pricing.value, read.promptTokens, read.completionTokens) ?? undefined
