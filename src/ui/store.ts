@@ -29,6 +29,9 @@ export interface Session {
   running: boolean
   paused: boolean
   statusLine: string
+  /** When the current execution started and how many rows were already done then. */
+  runStartedAt: number | null
+  runDoneAtStart: number
   /** Rows of the source the current `frozen` came from, for completed datasets. */
   sourceRows: Record<string, unknown>[] | null
   sourceColumns: string[] | null
@@ -57,6 +60,8 @@ export function defaultSession(state: PersistedState): Session {
     running: false,
     paused: false,
     statusLine: '',
+    runStartedAt: null,
+    runDoneAtStart: 0,
     sourceRows: null,
     sourceColumns: null,
   }

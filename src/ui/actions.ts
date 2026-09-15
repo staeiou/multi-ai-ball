@@ -176,6 +176,9 @@ export class Actions {
     const total = frozen.cases.length * frozen.models.length * frozen.repeats
     let done = this.store.session.rows.filter(r => r.status !== 'pending').length
     this.controller = new RunController(frozen, this.store.session.apiKey, {
+      onStart: index => {
+        this.store.update(d => { const row = d.session.rows[index]; if (row) d.session.rows[index] = { ...row, status: 'running', error: undefined } })
+      },
       onRow: (index, row) => {
         done++
         this.store.update(d => { d.session.rows[index] = row; d.session.statusLine = `Running ${done}/${total}` })
@@ -184,13 +187,13 @@ export class Actions {
       onRetry: (index, event) => {
         this.store.update(d => {
           const row = d.session.rows[index]
-          if (row) d.session.rows[index] = { ...row, error: `retrying ${event.attempt}/${event.maxRetries}${event.error ? `: ${event.error}` : ''}` }
+          if (row) d.session.rows[index] = { ...row, status: 'running', error: `retrying ${event.attempt}/${event.maxRetries}${event.error ? `: ${event.error}` : ''}` }
         })
       },
     })
     // Resume keeps the rows already completed.
     this.controller.seed(this.store.session.rows)
-    this.store.update(d => { d.session.running = true; d.session.paused = false; d.session.statusLine = `Running ${done}/${total}` })
+    this.store.update(d => { d.session.running = true; d.session.paused = false; d.session.statusLine = `Running ${done}/${total}`; d.session.runStartedAt = Date.now(); d.session.runDoneAtStart = done })
     const outcome = await this.controller.start(indices)
     this.controller = null
     const ok = outcome.rows.filter(r => r.status === 'ok').length

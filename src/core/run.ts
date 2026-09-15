@@ -13,6 +13,8 @@ import { totalCalls } from './freeze'
 import type { CallRow, FrozenRun } from './types'
 
 export interface RunHooks {
+  /** A call is about to be sent (it is now in flight). */
+  onStart?: (index: number) => void
   onRow?: (index: number, row: CallRow) => void
   onRetry?: (index: number, event: RetryEvent) => void
 }
@@ -85,6 +87,8 @@ export class RunController {
         const coord = coordinateAt(run, index)
         const model = run.models[coord.modelIndex]!
         const rendered = renderCall(run, coord)
+        this.rows[index] = { ...this.rows[index]!, status: 'running' }
+        this.hooks.onStart?.(index)
         const outcome = await runCall(rendered, model, {
           apiKey: this.apiKey,
           retry: { maxRetries: run.retries, backoffMultiplier: 2, baseDelayMs: 1000, maxDelayMs: 30000 },

@@ -207,7 +207,8 @@ export interface Coordinate {
 
 // --- results -----------------------------------------------------------------
 
-export type RowStatus = 'pending' | 'ok' | 'error'
+/** pending = waiting to be sent; running = in flight; ok / error = finished. */
+export type RowStatus = 'pending' | 'running' | 'ok' | 'error'
 
 export type ContentPart =
   | { kind: 'text'; text: string }

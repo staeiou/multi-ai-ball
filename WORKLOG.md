@@ -121,3 +121,13 @@ C. A guided one-question-per-screen wizard of ten steps. Most hand-holding; also
 **Verified.** `tsc` clean; vitest 116; Playwright 18 (13 stub + 5 mocked providers); build. The mocked-provider tests confirmed the design end to end: gpt-5 gets no temperature with the reason "only its default", `reasoning_effort: minimal` from "less"; Anthropic gets `system` as a field, `max_tokens` required, `output_config.effort: max` from "more" and nothing on Haiku; OpenRouter gets `provider.require_parameters`, per-model cap spelling, and records the sub-provider and `usage.cost`; the gear's extras reach the body and a `model` key in them is refused with the value shown.
 
 **Not done, deliberately.** No license chosen (owner's call). No visual/screenshot testing. No test of a real 30-column sheet in a browser beyond the fixtures.
+
+## 2026-09-15 (h): live execution view
+
+**Where.** `types.ts` (`RowStatus` gains `running`), `run.ts` (`onStart` hook; a row is marked running when its call is dispatched), `ui/actions.ts` (marks rows running, records when this execution started and how many rows were already done), `ui/store.ts` (`runStartedAt`, `runDoneAtStart`), `screens/results.ts` (tally + progress bar, ticking every second while running), `styles.css`.
+
+**What the results screen shows during a run.** Done of total, succeeded, failed, in flight, waiting; a three-colour progress bar; money spent so far from the costs providers return (falling back to the row's pre-run estimate for a finished call the provider did not price, and counting calls with no price at all); the expected total, projected from the average real cost of the calls that have come back times the calls left (before anything is back, from the pre-run estimate), with the basis named; elapsed time and about how long is left, from this execution's completion rate. Rows show "in flight" / "waiting" / "retrying n/m"; the status filter has "In flight" and "Waiting".
+
+**Option not taken.** Estimating remaining time from each model's average latency and the concurrency setting. The completion-rate projection is one division, already accounts for concurrency and retries, and is what a user watching a progress bar expects; per-model latency modelling can come if the simple one misleads.
+
+**Verified.** `tsc` clean; vitest 116; Playwright 18, with the slow-model test asserting "1 in flight", "3 waiting", the expected-total line and the elapsed clock during the run, and "4 of 4 done" plus "spent so far" after the rerun.

@@ -16,6 +16,8 @@ const PAGE = 50
 
 export function buildResultsScreen(store: Store, actions: Actions): Screen {
   const status = h('span', { class: 'muted small status-line' })
+  const tally = h('div', { class: 'run-tally' })
+  const progress = h('div', { class: 'progress' }, h('div', { class: 'progress-ok' }), h('div', { class: 'progress-err' }), h('div', { class: 'progress-running' }))
   const pause = h('button', { class: 'btn', type: 'button' }, 'Pause')
   const resume = h('button', { class: 'btn', type: 'button' }, 'Resume')
   const cancel = h('button', { class: 'btn', type: 'button' }, 'Cancel')
@@ -30,7 +32,7 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
   openRunInput.hidden = true
   const openRun = h('button', { class: 'btn ghost', type: 'button' }, 'Open run file…')
   const search = h('input', { class: 'input result-search', type: 'search', placeholder: 'Filter by case, model, or text…' })
-  const statusFilter = h('select', { class: 'input result-status' }, h('option', { value: 'all' }, 'All'), h('option', { value: 'ok' }, 'Succeeded'), h('option', { value: 'error' }, 'Failed'), h('option', { value: 'pending' }, 'Pending'), h('option', { value: 'parse-failed' }, 'Could not parse'))
+  const statusFilter = h('select', { class: 'input result-status' }, h('option', { value: 'all' }, 'All'), h('option', { value: 'ok' }, 'Succeeded'), h('option', { value: 'error' }, 'Failed'), h('option', { value: 'running' }, 'In flight'), h('option', { value: 'pending' }, 'Waiting'), h('option', { value: 'parse-failed' }, 'Could not parse'))
   const modelFilter = h('select', { class: 'input result-model' })
   const tableWrap = h('div', { class: 'final-table-wrap' })
   const pager = h('div', { class: 'row pager' })
@@ -38,6 +40,8 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
 
   const el = h('section', { class: 'card stage-card' },
     h('div', { class: 'stage-heading' }, h('h2', {}, 'Results')),
+    tally,
+    progress,
     h('div', { class: 'results-toolbar' }, status, pause, resume, cancel, rerun),
     h('div', { class: 'results-toolbar' }, exportXlsx, exportCsv, exportJsonl, exportCompleted, exportPy, saveRun, openRun, openRunInput),
     h('div', { class: 'result-filters' }, search, statusFilter, modelFilter),
@@ -47,6 +51,7 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
   )
 
   let page = 0
+  setInterval(() => { if (store.session.running) renderTally(current()) }, 1000)
   pause.addEventListener('click', () => actions.pause())
   resume.addEventListener('click', () => actions.resume())
   cancel.addEventListener('click', () => actions.cancel())
@@ -112,7 +117,7 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
         h('td', { class: 'mono' }, c.label),
         multi ? h('td', { class: 'mono' }, model.id) : null,
         frozen.repeats > 1 ? h('td', { class: 'center' }, String(row.coord.repeat + 1)) : null,
-        h('td', { class: 'center' }, h('span', { class: `status ${row.status}${row.parseStatus === 'failed' ? ' parse-failed' : ''}` }, row.status === 'pending' && row.error ? row.error.slice(0, 24) : row.status === 'ok' && row.parseStatus === 'failed' ? 'ok, unparsed' : row.status)),
+        h('td', { class: 'center' }, h('span', { class: `status ${row.status}${row.parseStatus === 'failed' ? ' parse-failed' : ''}` }, row.status === 'running' && row.error ? row.error.slice(0, 24) : row.status === 'running' ? 'in flight' : row.status === 'pending' ? 'waiting' : row.status === 'ok' && row.parseStatus === 'failed' ? 'ok, unparsed' : row.status)),
         ...columns.map(k => h('td', { class: 'parsed-cell' }, cell(row, k).slice(0, 80))),
         h('td', { class: `result-long ${row.status === 'error' ? 'err-text' : ''}` }, text.length > 240 ? `${text.slice(0, 240)}…` : text),
         h('td', { class: 'center' }, formatUsd(row.costUsd ?? row.estimatedCostUsd)),
@@ -172,8 +177,53 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
     }) : [h('p', { class: 'muted small' }, 'No saved runs yet. Every run is saved here as it progresses, so a closed tab loses nothing.')]))
   }
 
+  function renderTally(data: AppData): void {
+    const { frozen, rows } = data.session
+    if (!frozen || rows.length === 0) { tally.replaceChildren(); progress.hidden = true; return }
+    let ok = 0, failed = 0, inFlight = 0, waiting = 0, spent = 0, unpriced = 0, remaining = 0
+    for (const row of rows) {
+      if (row.status === 'ok') { ok++; if (row.costUsd != null) spent += row.costUsd; else if (row.estimatedCostUsd != null) spent += row.estimatedCostUsd; else unpriced++ }
+      else if (row.status === 'error') failed++
+      else { if (row.status === 'running') inFlight++; else waiting++; if (row.estimatedCostUsd != null) remaining += row.estimatedCostUsd }
+    }
+    const total = rows.length
+    const done = ok + failed
+    const left = inFlight + waiting
+    // Projection from what has actually come back: average real cost per
+    // finished priced call times the calls left; before anything is back, the
+    // pre-run estimate. Time from the completion rate of this execution.
+    const priced = rows.filter(r => r.status === 'ok' && r.costUsd != null)
+    const avgCost = priced.length ? priced.reduce((s, r) => s + (r.costUsd ?? 0), 0) / priced.length : null
+    const projectedTotal = avgCost !== null ? spent + avgCost * left : spent + remaining
+    const startedAt = data.session.runStartedAt
+    const doneThisRun = done - data.session.runDoneAtStart
+    const elapsedMs = startedAt ? Date.now() - startedAt : 0
+    const rate = elapsedMs > 0 && doneThisRun > 0 ? doneThisRun / elapsedMs : null
+    const leftMs = rate && left > 0 ? left / rate : null
+    const clock = (ms: number): string => { const s = Math.round(ms / 1000); return s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s` }
+    const stat = (n: number, label: string, cls = ''): HTMLElement => h('span', { class: `tally-item ${cls}` }, h('strong', {}, String(n)), ` ${label}`)
+    const items: Array<HTMLElement | null> = [
+      stat(done, `of ${total} done`),
+      stat(ok, 'succeeded', 'ok-text'),
+      stat(failed, 'failed', failed ? 'err-text' : ''),
+      stat(inFlight, 'in flight', inFlight ? 'running-text' : ''),
+      stat(waiting, 'waiting'),
+      h('span', { class: 'tally-item tally-cost' },
+        h('strong', {}, formatUsd(spent)), ` spent so far${unpriced ? ` (${unpriced} calls without a price)` : ''}`,
+        left > 0 ? h('span', { class: 'muted' }, ` · about ${formatUsd(projectedTotal)} expected in total${avgCost !== null ? ', from the calls back so far' : ', from the pre-run estimate'}`) : null),
+      data.session.running && startedAt ? h('span', { class: 'tally-item muted' }, `${clock(elapsedMs)} elapsed${leftMs !== null ? ` · about ${clock(leftMs)} left` : ''}`) : null,
+    ]
+    tally.replaceChildren(...items.filter((n): n is HTMLElement => n !== null))
+    progress.hidden = false
+    ;(progress.children[0] as HTMLElement).style.width = `${(ok / total) * 100}%`
+    ;(progress.children[1] as HTMLElement).style.width = `${(failed / total) * 100}%`
+    ;(progress.children[2] as HTMLElement).style.width = `${(inFlight / total) * 100}%`
+    progress.title = `${done} of ${total} done`
+  }
+
   function refresh(data: AppData): void {
     const { frozen, running, paused, rows, statusLine, sourceRows } = data.session
+    renderTally(data)
     status.textContent = statusLine
     pause.hidden = !running || paused
     resume.hidden = !running || !paused

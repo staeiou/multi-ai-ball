@@ -260,6 +260,10 @@ test.describe('the rest of the surface', () => {
     await next(page)
     await expect(page.locator('button.run-button')).toBeEnabled({ timeout: 15_000 })
     await page.click('button.run-button')
+    await expect(page.locator('.run-tally')).toContainText('1 in flight', { timeout: 10_000 })
+    await expect(page.locator('.run-tally')).toContainText('3 waiting')
+    await expect(page.locator('.run-tally')).toContainText('expected in total')
+    await expect(page.locator('.run-tally')).toContainText('elapsed', { timeout: 5_000 })
     await page.click('button:has-text("Pause")')
     await expect(page.locator('.status-line')).toContainText('Paused')
     await page.click('button:has-text("Resume")')
@@ -271,6 +275,8 @@ test.describe('the rest of the surface', () => {
     await page.click('button:has-text("Run the missing calls")')
     await expect(page.locator('.status.ok')).toHaveCount(4, { timeout: 20_000 })
     await expect(page.locator('.status-line')).toContainText('Done')
+    await expect(page.locator('.run-tally')).toContainText('4 of 4 done')
+    await expect(page.locator('.run-tally')).toContainText('spent so far')
   })
 
   test('a model typed by id runs even when the list does not carry it', async ({ page }) => {
