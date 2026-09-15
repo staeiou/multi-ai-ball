@@ -5,3 +5,4 @@ test-results/
 dist/
 *HANDOFF*.md
 .ipynb_checkpoints/
+__pycache__/

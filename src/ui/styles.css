@@ -1079,3 +1079,48 @@ textarea.input {
   color: var(--warn);
   font-size: 12.5px;
 }
+
+/* --- 2026-09 rebuild: roles, partition, review report, results detail --- */
+.flow-tabs { margin-bottom: 8px; }
+.sweep-box { display: grid; gap: 10px; margin-bottom: 10px; }
+.sweep-list { display: grid; gap: 10px; }
+.sweep-var { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); }
+.sheet-section { display: grid; gap: 10px; margin-bottom: 10px; }
+.roles-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.roles-table th, .roles-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
+.roles-table .role-select { width: 100%; max-width: 420px; }
+.cell-sample { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.partition-box p { margin: 6px 0; }
+.partition-editor .row-role { width: 150px; }
+.inline-blocker { margin: 4px 0 8px; }
+.constant-block { max-height: 320px; overflow: auto; white-space: pre-wrap; font-size: 12px; }
+.ok-text { color: var(--ok); }
+.err-text { color: var(--err); }
+.mono { font-family: var(--mono); }
+.review-models { display: grid; gap: 8px; margin-top: 12px; max-width: 1100px; }
+.review-model { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; background: var(--card); }
+.review-model summary { cursor: pointer; }
+.report-table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin: 8px 0; }
+.report-table th, .report-table td { padding: 4px 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.report-table tr.omitted td { color: var(--muted); }
+.report-table tr.sent td:first-child { font-weight: 600; }
+.review-model .payload-code { max-height: 360px; overflow: auto; font-size: 12px; }
+.results-toolbar + .results-toolbar { margin-top: 6px; }
+.result-row { cursor: pointer; }
+.result-row:hover td { background: var(--primary-soft); }
+.parsed-cell { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status.parse-failed { color: var(--warn); }
+.pager { margin-top: 8px; }
+.saved-runs { display: grid; gap: 6px; padding: 8px 0; }
+.saved-run { display: grid; grid-template-columns: 170px 1fr 90px auto auto; gap: 10px; align-items: center; font-size: 13px; }
+.detail-section { margin: 12px 0; }
+.detail-section h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.detail-dialog .payload-code { max-height: 320px; }
+.settings-dialog { display: grid; gap: 12px; align-content: start; }
+.settings-dialog .settings-panel { margin-top: 4px; }
+.model-row-wrap { display: grid; grid-template-columns: 1fr auto; gap: 4px; align-items: stretch; }
+.model-row-wrap .model-row { width: 100%; }
+.gear { align-self: center; }
+.template-row { margin-top: 14px; }
+textarea.mono { font-family: var(--mono); font-size: 12.5px; }
+.result-model { max-width: 320px; }

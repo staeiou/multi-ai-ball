@@ -1,64 +1,46 @@
-// Cost math shared by the model stage and the review stage. Pure: takes
-// explicit inputs, renders strings — no DOM, no global state.
+// Cost math for the models and review screens. Pure.
 
 import { estimateCostUsd, formatUsd } from '../core/pricing'
-import type { ModelCatalogEntry, ParamOverrides } from '../core/types'
-import { ASSUMED_OUTPUT_TOKENS, CONFIRM_THRESHOLD_USD } from './constants'
+import { naiveTokenCount } from '../core/tokenizer'
+import type { CatalogModel } from '../core/types'
 
 export interface CostInputs {
-  models: ModelCatalogEntry[]
-  selected: string[]
-  tokenEstimate: number
-  prompt: string
-  system: string
-  params: ParamOverrides
-  repeats: number
-  caseCount: number
+  /** Tokens of the constant block plus a typical item (system + prompt). */
+  inputTokens: number
+  outputTokens: number
+  calls: number
 }
 
-export function selectedModels(inputs: Pick<CostInputs, 'models' | 'selected'>): ModelCatalogEntry[] {
-  return inputs.selected
-    .map(id => inputs.models.find(m => m.id === id))
-    .filter((m): m is ModelCatalogEntry => m !== undefined)
+export function costInputs(constantBlock: string, prompt: string, system: string, outputLength: number | null, calls: number): CostInputs {
+  return {
+    inputTokens: naiveTokenCount(constantBlock) + naiveTokenCount(prompt) + naiveTokenCount(system),
+    outputTokens: outputLength ?? 512,
+    calls: Math.max(1, calls),
+  }
 }
 
-export function modelCost(m: ModelCatalogEntry, inputs: CostInputs): number | null {
-  if (!m.pricing) return null
-  const tokens = inputs.tokenEstimate || Math.ceil((inputs.prompt + inputs.system).length / 4)
-  return estimateCostUsd(m.pricing, tokens, inputs.params.maxTokens ?? ASSUMED_OUTPUT_TOKENS)
+export function modelRunRange(model: CatalogModel, inputs: CostInputs): { low: number; high: number } | null {
+  const pricing = model.guidance.pricing.value
+  if (!pricing) return null
+  const low = estimateCostUsd(pricing, inputs.inputTokens, Math.min(10, inputs.outputTokens))!
+  const high = estimateCostUsd(pricing, inputs.inputTokens, inputs.outputTokens)!
+  return { low: low * inputs.calls, high: high * inputs.calls }
 }
 
-export function modelCostRange(m: ModelCatalogEntry, inputs: CostInputs): { low: number; high: number } | null {
-  if (!m.pricing) return null
-  const tokens = inputs.tokenEstimate || Math.ceil((inputs.prompt + inputs.system).length / 4)
-  const highTokens = inputs.params.maxTokens ?? ASSUMED_OUTPUT_TOKENS
-  const low = estimateCostUsd(m.pricing, tokens, Math.min(10, highTokens))
-  const high = estimateCostUsd(m.pricing, tokens, highTokens)
-  if (low === null || high === null) return null
-  return { low, high }
+export function modelCost(model: CatalogModel, inputs: CostInputs): number | null {
+  return modelRunRange(model, inputs)?.high ?? null
 }
 
-/** Whole-run range for one model: 10–max output tokens × all calls. */
-export function modelRunRange(m: ModelCatalogEntry, inputs: CostInputs): { low: number; high: number } | null {
-  const range = modelCostRange(m, inputs)
-  if (!range) return null
-  const calls = Math.max(1, inputs.caseCount) * Math.max(1, inputs.repeats)
-  return { low: range.low * calls, high: range.high * calls }
-}
-
-export function costSummary(m: ModelCatalogEntry, inputs: CostInputs): string {
+export function costSummary(model: CatalogModel, inputs: CostInputs): string {
+  const range = modelRunRange(model, inputs)
+  const pricing = model.guidance.pricing.value
   const parts: string[] = []
-  const range = modelRunRange(m, inputs)
-  if (range) parts.push(`~${formatUsd(range.low)}–${formatUsd(range.high)} all rows`)
-  if (m.pricing) parts.push(`${fmtPerMillion(m.pricing.prompt * 1e6)}/${fmtPerMillion(m.pricing.completion * 1e6)}M / 1M`)
-  return parts.join(' · ')
+  if (range) parts.push(`~${formatUsd(range.low)}–${formatUsd(range.high)} run`)
+  if (pricing) parts.push(`$${(pricing.prompt * 1e6).toFixed(2)}/$${(pricing.completion * 1e6).toFixed(2)} per 1M`)
+  return parts.join(' · ') || 'price unknown'
 }
 
-export function fmtPerMillion(value: number): string {
-  return value >= 100 ? String(Math.round(value)) : value >= 10 ? value.toFixed(1) : value.toFixed(2)
-}
-
-export function sortByCost(list: ModelCatalogEntry[], inputs: CostInputs): ModelCatalogEntry[] {
+export function sortByCost(list: CatalogModel[], inputs: CostInputs): CatalogModel[] {
   return [...list].sort((a, b) => {
     const ca = modelCost(a, inputs)
     const cb = modelCost(b, inputs)
@@ -69,18 +51,13 @@ export function sortByCost(list: ModelCatalogEntry[], inputs: CostInputs): Model
   })
 }
 
-export function estimateTotalRange(inputs: CostInputs): { low: number; high: number } {
-  return selectedModels(inputs).reduce((sum, model) => {
+export function totalRange(models: CatalogModel[], inputs: CostInputs): { low: number; high: number; unknown: number } {
+  let low = 0, high = 0, unknown = 0
+  for (const model of models) {
     const range = modelRunRange(model, inputs)
-    return range ? { low: sum.low + range.low, high: sum.high + range.high } : sum
-  }, { low: 0, high: 0 })
+    if (!range) { unknown++; continue }
+    low += range.low
+    high += range.high
+  }
+  return { low, high, unknown }
 }
-
-export function estimateTotalText(inputs: CostInputs): string {
-  const range = estimateTotalRange(inputs)
-  if (range.high <= 0) return ''
-  const models = selectedModels(inputs).length
-  return `~${formatUsd(range.low)}–${formatUsd(range.high)} (${inputs.caseCount} case${inputs.caseCount === 1 ? '' : 's'} × ${models} model${models === 1 ? '' : 's'}${inputs.repeats > 1 ? ` × ${inputs.repeats}` : ''}; 10–${inputs.params.maxTokens ?? ASSUMED_OUTPUT_TOKENS} output tokens)`
-}
-
-export { ASSUMED_OUTPUT_TOKENS, CONFIRM_THRESHOLD_USD }

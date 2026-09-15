@@ -1,189 +1,191 @@
-// End-to-end against the local mock provider (dev/stub-server.mjs). This is
-// the deterministic flow that must never break — API keys, live costs, and
-// real models are NOT involved.
+// End-to-end against the local stub provider (dev/stub-server.mjs). No keys,
+// no network, no real models. These walk the six screens the way a user does.
 import { expect, test } from '@playwright/test'
+import type { Page } from '@playwright/test'
 
 const STUB_BASE = 'http://localhost:8787'
+const STUB_MODELS = 6
 
-async function fillCustomProvider(page: import('@playwright/test').Page): Promise<void> {
+async function connectStub(page: Page): Promise<void> {
   await page.selectOption('.provider-band select', 'custom')
   await page.fill('input[placeholder*="Base URL"]', STUB_BASE)
   await page.click('text=Load models')
-  await expect(page.locator('.pick-col .model-row')).toHaveCount(5)
+  await expect(page.locator('.pick-col .model-row')).toHaveCount(STUB_MODELS)
 }
 
-async function advanceToProvider(page: import('@playwright/test').Page, prompt: string): Promise<void> {
-  await page.fill('textarea[data-field="prompt"]', prompt)
-  await page.click('text=Next →') // output format
-  await page.click('text=Next →') // provider
+async function next(page: Page, times = 1): Promise<void> {
+  for (let i = 0; i < times; i++) {
+    await expect(page.locator('button.wizard-next')).toBeEnabled()
+    await page.click('button.wizard-next')
+  }
 }
 
-async function advanceModelsToReview(page: import('@playwright/test').Page): Promise<void> {
-  await page.click('text=Next →') // settings
-  await page.click('text=Next →') // review
+async function pickModel(page: Page, id: string): Promise<void> {
+  await page.click(`.pick-col .model-row:has(.model-id:text-is("${id}"))`)
 }
 
-test.describe('mock provider flow', () => {
-  test('saved templates remain visible and can be loaded', async ({ page }) => {
-    await page.goto('/')
-    await page.fill('textarea[data-field="prompt"]', 'Original prompt')
-    await page.click('text=Next →')
+async function runAndWait(page: Page, calls: number): Promise<void> {
+  await expect(page.locator('button.run-button')).toBeEnabled({ timeout: 15_000 })
+  await page.click('button.run-button')
+  await expect(page.locator('.step.active h2')).toHaveText('Results')
+  await expect(page.locator('.final-table tbody tr')).toHaveCount(calls, { timeout: 30_000 })
+  await expect(page.locator('.status-line')).toContainText('Done', { timeout: 30_000 })
+}
 
-    await page.fill('input[placeholder="Template name"]', 'My template')
-    await page.click('text=Save as template')
-    const templateSelect = page.locator('.step.active select').filter({ has: page.locator('option', { hasText: 'My template' }) })
-    await expect(templateSelect).toHaveCount(1)
+test.beforeEach(async ({ page }) => {
+  await page.goto('/')
+  // Each test starts from a clean browser; the wizard must open on the first screen.
+  await expect(page.locator('.step.active h2')).toHaveText('Prompt & data')
+})
 
-    await page.click('text=← Back')
-    await page.fill('textarea[data-field="prompt"]', 'Changed prompt')
-    await page.click('text=Next →')
-    await templateSelect.selectOption({ label: 'My template' })
-    await page.click('text=← Back')
-    await expect(page.locator('textarea[data-field="prompt"]')).toHaveValue('Original prompt')
-  })
-
-  test('backup restores a completed run as completed results', async ({ page }) => {
-    await page.goto('/')
-    await advanceToProvider(page, 'Remember this run')
-    await fillCustomProvider(page)
-    await page.click(`.pick-col .model-row:has-text("stub-echo")`)
-    await advanceModelsToReview(page)
-    await page.click('button.run-button')
-    await expect(page.locator('.final-table .response-text')).toContainText('Remember this run')
-
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.click('text=Backup'),
-    ])
-    const backupPath = await download.path()
-    expect(backupPath).not.toBeNull()
-
-    page.once('dialog', dialog => dialog.accept())
-    await page.click('text=New prompt')
-    await expect(page.locator('.step.active h2')).toHaveText('Prompt')
-
-    page.once('dialog', dialog => dialog.accept())
-    await page.setInputFiles('input[type=file][accept=".zip"]', backupPath!)
-    await expect(page.locator('.step.active h2')).toHaveText('Results')
-    await expect(page.locator('.final-table .response-text')).toContainText('Remember this run')
-    await expect(page.locator('.final-table')).toContainText('ok')
-  })
-
-  test('loads models, runs a prompt across two models, and exports CSV', async ({ page }) => {
-    await page.goto('/')
-    // This is a true stage wizard, not a long page with all sections stacked.
-    await expect(page.locator('.step.active')).toHaveCount(1)
-    expect(await page.locator('.step:not(.active)').evaluateAll(steps =>
-      steps.every(step => getComputedStyle(step).display === 'none'),
-    )).toBe(true)
-
-    await advanceToProvider(page, 'Classify this request: {{topic}}')
-    await fillCustomProvider(page)
-    await expect(page.locator('.step.active')).toHaveCount(1)
-
-    // Stage 2 is now Provider & models: select first, then advance.
-    await page.click(`.pick-col .model-row:has-text("stub-echo")`)
-    await page.click(`.pick-col .model-row:has-text("stub-uppercase")`)
+test.describe('single prompt', () => {
+  test('runs one prompt across two models, shows both answers, exports CSV, and lists the saved run', async ({ page }) => {
+    await page.fill('textarea[data-field="prompt"]', 'Classify this request')
+    await next(page, 2)
+    await connectStub(page)
+    await pickModel(page, 'stub-echo')
+    await pickModel(page, 'stub-uppercase')
     await expect(page.locator('.selected-col .model-row')).toHaveCount(2)
-    await expect(page.locator('.pick-col .model-row')).toHaveCount(3)
+    await expect(page.locator('.pick-col .model-row')).toHaveCount(STUB_MODELS - 2)
+    await next(page, 2)
+    // The review screen shows the frozen request before anything is sent.
+    await expect(page.locator('.review-model')).toHaveCount(2)
+    await expect(page.locator('.review-model').first()).toContainText('max_tokens')
+    await runAndWait(page, 2)
+    await expect(page.locator('.final-table')).toContainText('CLASSIFY THIS REQUEST')
+    await expect(page.locator('.status.ok')).toHaveCount(2)
 
-    await advanceModelsToReview(page)
-    await expect(page.locator('button.run-button')).toBeEnabled()
-    await page.click('button.run-button') // "Run"
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('text=CSV')])
+    const csv = (await streamToString(await download.createReadStream())).toString('utf8')
+    expect(csv.split('\r\n')).toHaveLength(3)
+    expect(csv).toContain('CLASSIFY THIS REQUEST')
+    expect(csv).toContain('Request body SHA-256')
 
-    // Run immediately enters the visible Results state, before calls settle.
-    await expect(page.locator('.step.active h2')).toHaveText('Results')
-    // One prompt × many models is a head-to-head table, not model tabs.
-    await expect(page.locator('.result-tab')).toHaveCount(0)
-    await expect(page.locator('.final-table thead')).toContainText('Model', { timeout: 20_000 })
-    await expect(page.getByText('ok', { exact: true })).toHaveCount(2, { timeout: 20_000 })
-    // The uppercase stub's row shows the transformed answer (echo's row keeps the prompt verbatim).
-    await expect(page.locator('.response-text', { hasText: /CLASSIFY/ })).toHaveCount(1, { timeout: 10_000 })
-
-    // CSV export downloads and contains the rendered prompt + a row per call.
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.click('text=CSV'),
-    ])
-    const stream = await download.createReadStream()
-    const csv = (await streamToString(stream)).toString('utf8')
-    expect(csv).toContain('Classify this request: {{topic}}')
-    expect(csv).toContain('CLASSIFY THIS REQUEST:')
-    expect(csv.split('\n').length).toBeGreaterThanOrEqual(3) // header + 2 rows
+    await page.click('text=Saved runs on this device')
+    await expect(page.locator('.saved-run')).toHaveCount(1)
+    await expect(page.locator('.saved-run')).toContainText('stub-echo, stub-uppercase')
   })
 
-  test('run stays blocked when the model list could not be loaded', async ({ page }) => {
-    await page.goto('/')
-    await advanceToProvider(page, 'x')
-    // Point the custom provider at a dead endpoint so Load models fails.
+  test('a placeholder in single-prompt mode blocks the first screen with a reason', async ({ page }) => {
+    await page.fill('textarea[data-field="prompt"]', 'Hello {{name}}')
+    await expect(page.locator('button.wizard-next')).toBeDisabled()
+    await expect(page.locator('.wizard-blocker').first()).toContainText('{{name}}')
+  })
+
+  test('a dead endpoint blocks advancing past the models screen', async ({ page }) => {
+    await page.fill('textarea[data-field="prompt"]', 'x')
+    await next(page, 2)
     await page.selectOption('.provider-band select', 'custom')
     await page.fill('input[placeholder*="Base URL"]', 'http://localhost:59999')
     await page.click('text=Load models')
-    await expect(page.getByText('Load failed:', { exact: false }).first()).toBeVisible()
-    // The gate blocks advance with a visible reason: never route into an
-    // empty models stage.
+    await expect(page.locator('[data-field="loadFacts"]')).toContainText('Load failed')
     await expect(page.locator('button.wizard-next')).toBeDisabled()
-    await expect(page.locator('button.wizard-next')).toHaveAttribute('title', /model list/)
-    await expect(page.locator('.step.active')).toHaveCount(1)
+  })
+})
+
+test.describe('spreadsheet', () => {
+  const csv = [
+    'id,text,frame,score',
+    'A1,Markets fell on rate fears,economic,4',
+    'A2,The council debated the park,civic,2',
+    'A3,Hospital wait times doubled,,',
+    'A4,Startup raises money,,',
+    'A5,Partly coded,economic,',
+  ].join('\n')
+
+  async function loadSheet(page: Page): Promise<void> {
+    await page.click('button.chip[data-flow="sheet"]')
+    await page.setInputFiles('input[type=file][accept*=".csv"]', { name: 'articles.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) })
+    await expect(page.locator('.roles-table tbody tr')).toHaveCount(4)
+  }
+
+  test('roles drive the partition: filled output rows become examples, blank rows run, partial rows are skipped', async ({ page }) => {
+    await loadSheet(page)
+    await page.selectOption('select.role-select[data-column="id"]', 'reference')
+    await page.selectOption('select.role-select[data-column="frame"]', 'output')
+    await page.selectOption('select.role-select[data-column="score"]', 'output')
+    await expect(page.locator('.partition-box')).toContainText('2 rows to run')
+    await expect(page.locator('.partition-box')).toContainText('2 rows already filled become worked examples')
+    await expect(page.locator('.partition-box')).toContainText('1 rows have some outputs filled')
+
+    // A reference column in the prompt is refused, with the reason shown.
+    await page.fill('textarea[data-field="prompt"]', 'Code this: {{text}} ({{id}})')
+    await expect(page.locator('button.wizard-next')).toBeDisabled()
+    await expect(page.locator('.inline-blocker')).toContainText('reference column')
+    await page.fill('textarea[data-field="prompt"]', 'Code this: {{text}}')
+    await expect(page.locator('button.wizard-next')).toBeEnabled()
+
+    // The examples are compiled once and shown.
+    await page.click('text=What every call will carry')
+    await expect(page.locator('.constant-block')).toContainText('<example>')
+    await expect(page.locator('.constant-block')).toContainText('Markets fell on rate fears')
+    await expect(page.locator('.constant-block')).toContainText('"frame":"economic"')
+    await expect(page.locator('.preview-user')).toContainText('Code this: Hospital wait times doubled')
   })
 
-  test('sheet source: upload shows columns, previews rows, and runs a mad-libs expansion', async ({ page }) => {
-    await page.goto('/')
-    // Sheet authoring belongs on the first stage.
-    await page.click('text=Spreadsheet × template')
-    await page.fill('textarea[data-field="prompt"]', 'Classify: Type={{type}}; Request={{request}}')
-    await page.setInputFiles('input[type=file][accept*=".csv"]', {
-      name: 'cases.csv',
-      mimeType: 'text/csv',
-      buffer: Buffer.from('type,request\nVIP,refund\nstandard,complaint\n'),
-    })
-    await expect(page.locator('.sheet-table th').nth(1)).toHaveText('type')
-    await expect(page.locator('.sheet-table th').nth(2)).toHaveText('request')
-    await expect(page.locator('.preview-user')).toContainText('Classify: Type=VIP; Request=refund')
-    await page.click('text=Next →') // output
-    await page.click('text=Next →') // provider & models
-    await fillCustomProvider(page)
-    await page.click(`.pick-col .model-row:has-text("stub-echo")`)
-    await advanceModelsToReview(page)
-    await expect(page.locator('button.run-button')).toBeEnabled()
-    await page.click('button.run-button')
+  test('runs the target rows, parses JSON into columns, and exports the completed spreadsheet', async ({ page }) => {
+    await loadSheet(page)
+    await page.selectOption('select.role-select[data-column="frame"]', 'output')
+    await page.selectOption('select.role-select[data-column="score"]', 'output')
+    await page.fill('textarea[data-field="prompt"]', 'Code this: {{text}}')
+    await next(page)
+    // Output format: two fields so the schema and the columns exist.
+    await page.click('text=+ Add field')
+    const entry = page.locator('.field-entry').first()
+    await entry.locator('input[placeholder*="field name"]').fill('frame')
+    await entry.locator('input[placeholder*="field name"]').press('Tab')
+    await entry.locator('.choice-row input').first().fill('economic')
+    await entry.locator('.choice-row input').first().press('Tab')
+    await next(page)
+    await connectStub(page)
+    await pickModel(page, 'stub-json')
+    await next(page, 2)
+    await expect(page.locator('.review-summary')).toContainText('2 rows to run (2 worked examples, 1 skipped)')
+    await runAndWait(page, 2)
+    await expect(page.locator('.final-table thead')).toContainText('frame')
+    await expect(page.locator('.final-table tbody')).toContainText('civic')
+    await expect(page.locator('.status.ok')).toHaveCount(2)
 
-    // 2 rows × 1 model = 2 calls.
-    await expect(page.locator('.grid-table tbody tr')).toHaveCount(2)
-    await expect(page.getByText('ok', { exact: true })).toHaveCount(2, { timeout: 20_000 })
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('text=Completed spreadsheet')])
+    expect(await download.path()).not.toBeNull()
+    expect(download.suggestedFilename()).toMatch(/completed.*\.xlsx$/)
+
+    // The detail dialog shows the exact request that was sent.
+    await page.click('.final-table tbody tr >> nth=0')
+    await expect(page.locator('.detail-dialog')).toContainText('Request that was sent')
+    await expect(page.locator('.detail-dialog')).toContainText('Hospital wait times doubled')
   })
+})
 
-  test('retries are visible in the table, the cost total updates live, and the final table shows cost without latency', async ({ page }) => {
-    await page.goto('/')
-    await advanceToProvider(page, 'Flaky hello')
-    await fillCustomProvider(page)
-    // Already on Provider & models: choose the flaky model right here.
-    await page.click(`.pick-col .model-row:has-text("stub-flaky")`)
-    await page.click('text=Next →') // run settings
+test.describe('resilience', () => {
+  test('a flaky model recovers within its retries and a failing model is reported, not hidden', async ({ page }) => {
+    await page.fill('textarea[data-field="prompt"]', 'Flaky hello')
+    await next(page, 2)
+    await connectStub(page)
+    await pickModel(page, 'stub-flaky')
+    await pickModel(page, 'stub-fail')
+    await next(page)
     await page.fill('[data-field="retries"]', '2')
-    await page.fill('[data-field="concurrency"]', '1')
-    await page.click('text=Next →') // review
-    await page.click('button.run-button')
+    await page.locator('[data-field="retries"]').press('Tab')
+    await next(page)
+    await runAndWait(page, 2)
+    await expect(page.locator('.status.ok')).toHaveCount(1)
+    await expect(page.locator('.status.error')).toHaveCount(1)
+    await expect(page.locator('.final-table')).toContainText('HTTP 500')
+    await expect(page.locator('button:has-text("Run the missing calls")')).toBeVisible()
+  })
 
-    // Live view: reasoning and response are separate columns.
-    await expect(page.locator('.live-table thead')).toContainText('Reasoning')
-    await expect(page.locator('.live-table thead')).toContainText('Response')
-
-    // A retrying status appears while the 503s are retried.
-    await expect(page.locator('.status.retrying')).toHaveCount(1, { timeout: 15_000 })
-    // The toolbar total is live, not a snapshot taken at the end.
-    await expect(page.getByText('so far', { exact: false })).toBeVisible()
-    // The flaky model recovers on its third attempt.
-    await expect(page.locator('.status.retrying')).toHaveCount(0, { timeout: 15_000 })
-
-    // Final table: cost and reasoning present, latency and parts absent.
-    const finalHead = page.locator('.final-table thead')
-    await expect(finalHead).toContainText('Cost')
-    await expect(finalHead).toContainText('Reasoning')
-    await expect(finalHead).not.toContainText('Latency')
-    await expect(finalHead).not.toContainText('Response parts')
-    await expect(page.locator('.final-table .raw-coin')).toHaveCount(1)
-    await expect(page.getByText('actual', { exact: false })).toBeVisible({ timeout: 10_000 })
+  test('saved templates round-trip prompt and fields', async ({ page }) => {
+    await page.fill('textarea[data-field="prompt"]', 'Original prompt')
+    await next(page)
+    await page.fill('input[placeholder="Template name"]', 'My template')
+    await page.click('text=Save as template')
+    await page.click('text=← Back')
+    await page.fill('textarea[data-field="prompt"]', 'Changed prompt')
+    await next(page)
+    await page.locator('.template-row select').selectOption({ label: 'My template' })
+    await page.click('text=← Back')
+    await expect(page.locator('textarea[data-field="prompt"]')).toHaveValue('Original prompt')
   })
 })
 

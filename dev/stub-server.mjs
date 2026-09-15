@@ -5,6 +5,7 @@
 //   stub-reverse   -> reverses the prompt
 //   stub-fail      -> always returns HTTP 500
 //   stub-flaky     -> returns HTTP 503 twice, then behaves like stub-echo
+//   stub-json      -> answers {"frame": "civic", "score": 3, "echo": <first 40 chars of the prompt>}
 // Run: npm run stub  (default http://localhost:8787/v1, override PORT)
 import http from 'node:http'
 
@@ -16,6 +17,7 @@ const MODELS = [
   { id: 'stub-reverse', name: 'Stub Reverse', context_length: 32768, pricing: { prompt: '0.0000003', completion: '0.0000009' } },
   { id: 'stub-fail', name: 'Stub Always Fails', context_length: 32768, pricing: { prompt: '0.0000001', completion: '0.0000002' } },
   { id: 'stub-flaky', name: 'Stub Flaky (503 twice)', context_length: 32768, pricing: { prompt: '0.0000002', completion: '0.0000008' } },
+  { id: 'stub-json', name: 'Stub JSON', context_length: 32768, pricing: { prompt: '0.0000001', completion: '0.0000001' } },
 ]
 
 let flakyHits = 0
@@ -36,6 +38,7 @@ function readBody(req) {
 }
 
 function render(modelId, prompt) {
+  if (modelId === 'stub-json') return JSON.stringify({ frame: 'civic', score: 3, echo: prompt.slice(0, 40) })
   if (modelId === 'stub-uppercase') return prompt.toUpperCase()
   if (modelId === 'stub-reverse') return [...prompt].reverse().join('')
   return prompt
