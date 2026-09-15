@@ -52,7 +52,7 @@ templates + contract + examples ──freeze──▶  FrozenRun
 
 `src/ui/`: `store.ts` (one store, `update()` saves and notifies), `model.ts`
 (derived state and gates), `actions.ts` (everything a screen may ask for),
-`screens/*` (six screens), `app.ts` (composition, 80 lines).
+`screens/*` (seven screens: data, instructions, output, models, settings, review, results), `app.ts` (composition, 80 lines).
 
 ## Providers, in one paragraph
 
@@ -82,7 +82,7 @@ endpoints to answer questions the catalogs cannot.
 
 - Never store a rendered prompt per call; the frozen run plus a coordinate regenerates it.
 - Never encode a per-model fact in code. Guidance or `exceptions.json`, with provenance.
-- Never rewrite a user's value. Omit and say why, or send and show the 400.
+- Never rewrite a user's absolute value. Omit and say why, or send and show the 400. The one relative control (thinking effort less/more) maps to each model's own lowest/highest level, printed on the check screen.
 - Python never re-derives what the browser decided.
 - Dependencies over rolled-own code; no machinery for a broader product than this one.
 - Never `git add -A`; stage exactly the files you changed.
