@@ -17,7 +17,8 @@
     "test:e2e": "playwright test tests/e2e/app.spec.ts",
     "test:e2e:live": "playwright test tests/e2e/live.spec.ts",
     "test:e2e:all": "playwright test",
-    "stub": "node dev/stub-server.mjs"
+    "stub": "node dev/stub-server.mjs",
+    "sync:models-dev": "node scripts/sync-models-dev.mjs"
   },
   "dependencies": {
     "gpt-tokenizer": "^3.4.0",

@@ -21,6 +21,7 @@ from .http import ApiAttemptError, RateGate, RetryPolicy, call_api
 from .output import output_filename, read_frame, write
 from .parsing import apply_parser
 from .store import ResultStore, context_column, parameter_column
+from .tasks import substitute_sentinels
 
 
 def parse_args(argv=None):
@@ -94,24 +95,16 @@ def check_api_keys(models):
 
 
 def build_request(model, task):
-    """Fill the placeholders the exporter left in this model's request."""
+    """Fill the key and the two sentinels the exporter left in this model's request."""
     key = os.getenv(model["api_key_env"], "") if model.get("api_key_env") else ""
-    headers = {k: v.replace("{{API_KEY}}", key) for k, v in model["headers"].items()}
-
-    # Substitute into the JSON text so any character in the prompt survives.
-    body_text = json.dumps(model["body"])
-    body_text = body_text.replace("{{PROMPT}}", json.dumps(task["prompt"])[1:-1])
-    # `is not None`, not truthiness: a system-prompt template can fill to an
-    # empty string (a template that is one placeholder, resolving against an
-    # unset variable or an empty dataset cell for that row). The body still
-    # carries the {{SYSTEM_PROMPT}} marker whenever a system prompt was
-    # configured at all, so it must still be replaced -- with nothing, here --
-    # or the literal marker text is sent to the model as its instructions.
-    if task.get("system_prompt") is not None:
-        body_text = body_text.replace(
-            "{{SYSTEM_PROMPT}}", json.dumps(str(task["system_prompt"]))[1:-1]
-        )
-    return headers, json.loads(body_text)
+    headers = {}
+    for name, value in model["headers"].items():
+        if "{{API_KEY}}" not in value:
+            headers[name] = value
+        elif key:
+            headers[name] = value.replace("{{API_KEY}}", key)
+    body = substitute_sentinels(model["body"], task.get("system_prompt"), task["prompt"])
+    return headers, body
 
 
 async def _run_one(client, gate, store, model, task, parser, namespace, policy, bar, counts):

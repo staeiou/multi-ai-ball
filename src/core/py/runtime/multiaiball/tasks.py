@@ -129,6 +129,31 @@ def fill(template, values):
     return _PLACEHOLDER.sub(replace, template)
 
 
+SYSTEM_SENTINEL = "{{SYSTEM}}"
+PROMPT_SENTINEL = "{{PROMPT}}"
+
+
+def substitute_sentinels(body, system, prompt):
+    """Replace the whole-string sentinels in a body skeleton with rendered text.
+
+    Mirrors the app's providers/shapes.ts substitute(): only a string value that
+    IS the sentinel is replaced, never a sentinel embedded inside other text, so
+    prompt content can never be mistaken for markup. The legacy
+    ``{{SYSTEM_PROMPT}}`` spelling from earlier bundles is accepted too.
+    """
+    if isinstance(body, str):
+        if body == SYSTEM_SENTINEL or body == "{{SYSTEM_PROMPT}}":
+            return system if system is not None else ""
+        if body == PROMPT_SENTINEL:
+            return prompt
+        return body
+    if isinstance(body, list):
+        return [substitute_sentinels(item, system, prompt) for item in body]
+    if isinstance(body, dict):
+        return {key: substitute_sentinels(value, system, prompt) for key, value in body.items()}
+    return body
+
+
 def attr_column(variable_name, attribute_name):
     """The result column for one attribute of one variable.
 

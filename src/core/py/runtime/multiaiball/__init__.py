@@ -17,7 +17,8 @@ built-in parser twin with corpus verification (``--verify-parsers``).
 from .http import ApiAttemptError, RetryPolicy, get_value_at_path
 from .parsing import apply_builtin, apply_parser, unstack_json_column, verify_corpus
 from .runner import run
-from .tasks import ParquetTasks, RowsTasks, TemplateTasks, fill
+from .tasks import ParquetTasks, RowsTasks, TemplateTasks, fill, substitute_sentinels
+from .frozen import FrozenTasks, main as run_frozen
 
 __all__ = [
     "run",
@@ -32,4 +33,7 @@ __all__ = [
     "verify_corpus",
     "get_value_at_path",
     "fill",
+    "substitute_sentinels",
+    "FrozenTasks",
+    "run_frozen",
 ]

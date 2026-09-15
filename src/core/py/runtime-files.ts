@@ -5,6 +5,7 @@
 // cannot be introduced by string assembly.
 
 import initSource from './runtime/multiaiball/__init__.py?raw'
+import frozenSource from './runtime/multiaiball/frozen.py?raw'
 import httpSource from './runtime/multiaiball/http.py?raw'
 import outputSource from './runtime/multiaiball/output.py?raw'
 import parsingSource from './runtime/multiaiball/parsing.py?raw'
@@ -16,6 +17,7 @@ import tasksSource from './runtime/multiaiball/tasks.py?raw'
 export const RUNTIME_PACKAGE_FILES: Readonly<Record<string, string>> = Object.freeze({
   'multiaiball/__init__.py': initSource,
   'multiaiball/http.py': httpSource,
+  'multiaiball/frozen.py': frozenSource,
   'multiaiball/store.py': storeSource,
   'multiaiball/tasks.py': tasksSource,
   'multiaiball/parsing.py': parsingSource,

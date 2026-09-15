@@ -3,4 +3,5 @@ node_modules/
 *2026*.md
 test-results/
 dist/
-
+*HANDOFF*.md
+.ipynb_checkpoints/

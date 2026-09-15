@@ -1,16 +1,27 @@
-// RunSnapshot -> CSV / JSONL / XLSX. Byte-identical output with the generated
-// Python runner is the contract for CSV/JSONL: same rows, same ordering, same
-// escaping, and numbers spelled the way Python spells them (pyFloatStr) so
-// pandas' writers produce identical bytes. XLSX carries identical cells.
+// Frozen run + rows -> the two user-facing tables and their files.
+//
+//   Long table: one row per call in coordinate order; the analytically regular
+//   artifact. The rendered prompt is not a column: the frozen run plus the
+//   coordinate regenerates it, and the export ships the frozen run alongside.
+//   Completed datasets: one table per model and repeat, shaped like the source
+//   sheet, example rows keeping their human codes, target rows filled with the
+//   model's parsed fields. The "finish my spreadsheet" artifact.
+//
+// Writers produce ordinary CSV/TSV/JSONL/XLSX. Cell values, column order and
+// null representation are the contract; bytes are not (the Python runner
+// writes its own files with its own libraries).
 
 import * as XLSX from 'xlsx'
 
+import { normalizeFieldName } from './contract'
 import { coerceCell, discoverUnstackColumns, extractUnstackCell, inferColumnType } from './parsers'
-import { parseWithBuiltin } from './parsers'
-import { resolvedParams } from './providers'
-import type { CallResult, RunMeta, RunSpec } from './types'
-
-// --- column contract (one definition; the Python twin renders the same) -----
+import { columnsWithRole } from './partition'
+import type { Row } from './partition'
+import { presetById } from './providers/presets'
+import { coordinateAt } from './render'
+import { responseText } from './run'
+import { totalCalls } from './freeze'
+import type { CallRow, FrozenRun } from './types'
 
 export type ExportValue = string | number | boolean | null
 
@@ -19,13 +30,18 @@ export interface ExportColumn {
   label: string
 }
 
+export interface ExportRow {
+  [key: string]: ExportValue
+}
+
 export const BASE_COLUMNS: readonly ExportColumn[] = [
-  { key: 'timestamp', label: 'Timestamp' },
+  { key: 'case', label: 'Case' },
+  { key: 'ordinal', label: 'Source row' },
   { key: 'provider', label: 'Provider' },
   { key: 'model', label: 'Model' },
-  { key: 'case', label: 'Case' },
   { key: 'repeat', label: 'Repeat' },
   { key: 'status', label: 'Status' },
+  { key: 'httpStatus', label: 'HTTP status' },
   { key: 'error', label: 'Error' },
   { key: 'latencyMs', label: 'Latency (ms)' },
   { key: 'promptTokens', label: 'Prompt tokens' },
@@ -33,162 +49,183 @@ export const BASE_COLUMNS: readonly ExportColumn[] = [
   { key: 'totalTokens', label: 'Total tokens' },
   { key: 'costUsd', label: 'Cost (USD)' },
   { key: 'estimatedCostUsd', label: 'Estimated cost (USD)' },
-  { key: 'template', label: 'Template' },
-  { key: 'bindings', label: 'Bindings (JSON)' },
-  { key: 'prompt', label: 'Prompt' },
-  { key: 'system', label: 'System prompt' },
-  { key: 'params', label: 'Parameters (JSON)' },
-  { key: 'thinking', label: 'Thinking' },
+  { key: 'parseStatus', label: 'Parse status' },
+]
+
+export const TAIL_COLUMNS: readonly ExportColumn[] = [
   { key: 'response', label: 'Response' },
-  { key: 'responseParts', label: 'Response parts (JSON)' },
+  { key: 'thinking', label: 'Reasoning' },
+  { key: 'upstream', label: 'Sub-provider' },
+  { key: 'bodyHash', label: 'Request body SHA-256' },
+  { key: 'bindings', label: 'Bindings (JSON)' },
   { key: 'raw', label: 'Raw response' },
 ]
 
-/** Columns that must stay text however they look (ids, JSON blobs). */
-const NEVER_TYPED = new Set([
-  'timestamp', 'provider', 'model', 'case', 'repeat', 'status', 'error',
-  'template', 'bindings', 'prompt', 'system', 'params', 'thinking', 'response', 'responseParts', 'raw',
-])
-
-export interface ExportRow {
-  [key: string]: ExportValue
+function parsedObject(row: CallRow): Record<string, unknown> | null {
+  return typeof row.parsed === 'object' && row.parsed !== null && !Array.isArray(row.parsed) ? row.parsed as Record<string, unknown> : null
 }
 
-/** Rendered prompt is derived here from template + bindings — the lean-prompt
- * invariant: export/display are the only places a rendered prompt exists. */
-export function buildRows(
-  meta: RunMeta,
-  specs: RunSpec[],
-  results: CallResult[],
-  parserId: string | null,
-): { columns: ExportColumn[]; rows: ExportRow[] } {
-  const parsedObjects: Array<Record<string, unknown> | null> = []
-  const parsedValues: Array<string | number | boolean | Record<string, unknown> | null> = []
+function scalarCell(value: unknown): ExportValue {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'object') return JSON.stringify(value)
+  return value as ExportValue
+}
 
-  for (const result of results) {
-    const text = responseText(result)
-    const parsed = parserId ? parseWithBuiltin(parserId, text) : null
-    parsedValues.push(typeof parsed === 'symbol' ? null : parsed)
-    parsedObjects.push(typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null)
+/** Columns the parser contributes: unstacked `parsed_*` for JSON, one
+ * `parsed` column otherwise, none without a parser. */
+export function parsedColumns(run: FrozenRun, rows: readonly CallRow[]): ExportColumn[] {
+  if (!run.parserId) return []
+  if (run.parserId === 'json-unstack') {
+    return discoverUnstackColumns(rows.map(parsedObject)).map(key => ({ key, label: key }))
   }
+  return [{ key: 'parsed', label: 'Parsed' }]
+}
 
-  const isUnstack = parserId === 'json-unstack'
-  // JSON-schema enums are labels, even when their labels happen to be `0` or
-  // `1`. Never run them through the generic yes/no/1/0 column coercion.
-  const enumColumns = new Set((meta.contract?.fields ?? [])
-    .filter(field => field.type === 'enum')
-    .map(field => `parsed_${field.name}`))
-  const parsedColumns = isUnstack
-    ? discoverUnstackColumns(parsedObjects).map(key => ({ key, label: key }))
-    : parserId
-      ? [{ key: 'parsed', label: 'Parsed' }]
-      : []
-  const columns: ExportColumn[] = [...BASE_COLUMNS, ...parsedColumns]
-  const rows: ExportRow[] = specs.map((spec, index) => {
-    const result = results[index]!
-    const text = responseText(result)
-    const row: ExportRow = {
-      timestamp: meta.ts,
-      provider: `${spec.provider.group} (${meta.providerLabel})`,
-      model: spec.model,
-      case: spec.caseLabel,
-      repeat: spec.repeatIndex + 1,
-      status: result.status,
-      error: result.error ?? null,
-      latencyMs: result.latencyMs ?? null,
-      promptTokens: result.promptTokens ?? null,
-      completionTokens: result.completionTokens ?? null,
-      totalTokens: result.totalTokens ?? null,
-      costUsd: result.costUsd ?? null,
-      estimatedCostUsd: result.estimatedCostUsd ?? null,
-      template: meta.promptTemplate,
-      bindings: JSON.stringify(spec.bindings),
-      prompt: spec.prompt,
-      system: spec.system,
-      params: JSON.stringify(resolvedParams(spec)),
-      thinking: result.thinking ?? null,
-      response: text,
-      responseParts: JSON.stringify(result.parts),
-      raw: result.rawJson ?? null,
+export function buildRows(run: FrozenRun, rows: readonly CallRow[]): { columns: ExportColumn[]; rows: ExportRow[] } {
+  const parsed = parsedColumns(run, rows)
+  const columns = [...BASE_COLUMNS, ...parsed, ...TAIL_COLUMNS]
+  const isUnstack = run.parserId === 'json-unstack'
+  const enumColumns = new Set((run.contract?.fields ?? []).filter(f => f.type === 'enum' || f.type === 'multi-enum').map(f => `parsed_${f.name}`))
+
+  const out: ExportRow[] = rows.map((row, index) => {
+    const coord = row.coord ?? coordinateAt(run, index)
+    const c = run.cases[coord.caseIndex]!
+    const model = run.models[coord.modelIndex]!
+    const record: ExportRow = {
+      case: c.label,
+      ordinal: c.ordinal + 1,
+      provider: presetById(model.provider).label,
+      model: model.id,
+      repeat: coord.repeat + 1,
+      status: row.status,
+      httpStatus: row.httpStatus ?? null,
+      error: row.error ?? null,
+      latencyMs: row.latencyMs ?? null,
+      promptTokens: row.promptTokens ?? null,
+      completionTokens: row.completionTokens ?? null,
+      totalTokens: row.totalTokens ?? null,
+      costUsd: row.costUsd ?? null,
+      estimatedCostUsd: row.estimatedCostUsd ?? null,
+      parseStatus: row.parseStatus,
+      response: responseText(row) || null,
+      thinking: row.thinking ?? null,
+      upstream: row.upstream ?? null,
+      bodyHash: row.bodyHash ?? null,
+      bindings: JSON.stringify(c.bindings),
+      raw: row.raw ?? null,
     }
     if (isUnstack) {
-      const obj = parsedObjects[index]
-      for (const column of parsedColumns) {
-        row[column.key] = extractUnstackCell(obj, column.key)
-      }
-    } else if (parserId) {
-      const parsed = parsedValues[index]
-      row.parsed = typeof parsed === 'object' && parsed !== null
-        ? JSON.stringify(parsed)
-        : parsed as string | number | boolean | null
+      const obj = parsedObject(row)
+      for (const column of parsed) record[column.key] = extractUnstackCell(obj, column.key)
+    } else if (run.parserId) {
+      record.parsed = row.parsed === 'PARSER_ERROR' ? 'PARSER_ERROR' : scalarCell(row.parsed)
     }
-    return row
+    return record
   })
 
-  // Whole-column typing for parsed columns (faithful values -> typed columns),
-  // mirroring the Python runner's apply_column_typing.
-  for (const column of parsedColumns) {
-    if (NEVER_TYPED.has(column.key) || enumColumns.has(column.key)) continue
-    const values = rows.map(r => r[column.key])
-    const type = inferColumnType(values)
+  // Whole-column typing for parsed columns (faithful values -> typed columns).
+  for (const column of parsed) {
+    if (enumColumns.has(column.key)) continue
+    const type = inferColumnType(out.map(r => r[column.key]))
     if (type === 'number' || type === 'boolean') {
-      for (const row of rows) row[column.key] = coerceCell(row[column.key], type) as ExportValue
+      for (const r of out) r[column.key] = coerceCell(r[column.key], type) as ExportValue
     }
   }
-
-  return { columns, rows }
+  return { columns, rows: out }
 }
 
-/** A provider may return several text blocks around images/tool calls. Parsing
- * and export must see the complete textual response, not only its first part. */
-function responseText(result: CallResult): string {
-  return result.parts.filter(part => part.kind === 'text').map(part => part.text).join('\n')
+// --- completed datasets ---------------------------------------------------------
+
+export interface CompletedDataset {
+  /** e.g. "anthropic claude-sonnet-5 (repeat 2)" */
+  name: string
+  fileStem: string
+  columns: string[]
+  rows: ExportRow[]
 }
 
-// --- writers (byte-parity with the Python runner) ----------------------------
+/** One completed sheet per model and repeat. Requires the source rows, which
+ * the frozen run does not carry (only the projected cases do). */
+export function buildCompletedDatasets(
+  run: FrozenRun,
+  rows: readonly CallRow[],
+  sourceRows: readonly Row[],
+  sourceColumns: readonly string[],
+): CompletedDataset[] {
+  const outputColumns = columnsWithRole(run.roles, 'output')
+  const byField = new Map<string, string>() // normalized contract/field name -> output column
+  for (const column of outputColumns) byField.set(normalizeFieldName(column), column)
+  const roleOf = new Map<number, 'example' | 'target' | 'ambiguous'>()
+  run.partition.examples.forEach(o => roleOf.set(o, 'example'))
+  run.partition.targets.forEach(o => roleOf.set(o, 'target'))
+  run.partition.ambiguous.forEach(o => roleOf.set(o, 'ambiguous'))
+  const caseIndexByOrdinal = new Map(run.cases.map((c, i) => [c.ordinal, i]))
 
-/** Python's repr() for floats, which pandas writes: decimal for
- * 1e-4 <= abs < 1e16, exponent form outside, `.0` on integral floats. */
-export function pyFloatStr(value: number): string {
-  if (Number.isNaN(value)) return 'nan'
-  if (value === Infinity) return 'inf'
-  if (value === -Infinity) return '-inf'
-  if (Object.is(value, -0)) return '-0.0'
-  const abs = Math.abs(value)
-  if (abs !== 0 && (abs < 1e-4 || abs >= 1e16)) {
-    const [mantissa, expRaw] = value.toExponential().split('e')
-    const exp = Number(expRaw)
-    const sign = value < 0 ? '-' : ''
-    const exponent = exp >= 0 ? `+${String(exp).padStart(2, '0')}` : `-${String(-exp).padStart(2, '0')}`
-    return `${sign}${mantissa}e${exponent}`
-  }
-  if (Number.isInteger(value)) return `${value}.0`
-  return String(value)
+  const parsedKeys = run.parserId === 'json-unstack'
+    ? discoverUnstackColumns(rows.map(parsedObject)).map(key => key.slice('parsed_'.length))
+    : run.parserId ? ['parsed'] : []
+  const extraColumns = outputColumns.length ? [] : parsedKeys.map(key => `model_${key}`)
+
+  const datasets: CompletedDataset[] = []
+  run.models.forEach((model, modelIndex) => {
+    for (let repeat = 0; repeat < run.repeats; repeat++) {
+      const columns = [...sourceColumns, ...extraColumns, '_row_role', '_status', '_model']
+      const out: ExportRow[] = sourceRows.map((source, ordinal) => {
+        const record: ExportRow = {}
+        for (const column of sourceColumns) record[column] = scalarCell(source[column])
+        const role = roleOf.get(ordinal) ?? 'ambiguous'
+        record._row_role = role
+        record._model = model.id
+        record._status = role === 'target' ? 'not run' : ''
+        const caseIndex = caseIndexByOrdinal.get(ordinal)
+        if (role !== 'target' || caseIndex === undefined) return record
+        const index = caseIndex * run.models.length * run.repeats + modelIndex * run.repeats + repeat
+        const call = rows[index]
+        if (!call) return record
+        record._status = call.status === 'ok' ? (call.parseStatus === 'failed' ? 'parse failed' : 'ok') : (call.error ?? 'error')
+        const obj = parsedObject(call)
+        if (outputColumns.length) {
+          if (obj) {
+            for (const [key, value] of Object.entries(obj)) {
+              const column = byField.get(normalizeFieldName(key))
+              if (column) record[column] = scalarCell(value)
+            }
+          } else if (outputColumns.length === 1 && call.parsed !== null && call.parsed !== 'PARSER_ERROR') {
+            record[outputColumns[0]!] = scalarCell(call.parsed)
+          }
+        } else if (obj) {
+          for (const key of parsedKeys) record[`model_${key}`] = extractUnstackCell(obj, `parsed_${key}`)
+        } else if (run.parserId) {
+          record.model_parsed = call.parsed === 'PARSER_ERROR' ? 'PARSER_ERROR' : scalarCell(call.parsed)
+        }
+        return record
+      })
+      const suffix = run.repeats > 1 ? ` (repeat ${repeat + 1})` : ''
+      datasets.push({
+        name: `${model.id}${suffix}`,
+        fileStem: `${model.id.replace(/[^a-z0-9._-]+/gi, '_')}${run.repeats > 1 ? `-r${repeat + 1}` : ''}`,
+        columns,
+        rows: out,
+      })
+    }
+  })
+  return datasets
 }
 
-function pythonCellNumber(value: number): string {
-  // Python typing produces int for integer values, float otherwise; pandas
-  // and json.dumps spell them differently, so match both paths.
-  return Number.isInteger(value) && Math.abs(value) < 1e16 ? String(value) : pyFloatStr(value)
-}
+// --- writers -----------------------------------------------------------------------
 
 function cellString(value: ExportValue): string {
   if (value === null) return ''
-  if (typeof value === 'number') return pythonCellNumber(value)
-  if (typeof value === 'boolean') return value ? 'True' : 'False'
-  return value
+  if (typeof value === 'boolean') return value ? 'true' : 'false'
+  return String(value)
 }
 
-/** pandas to_csv minimal quoting: quote iff the field contains the delimiter,
- * a quote, or a line terminator. */
 function quoteIfNeeded(field: string, delimiter: string): string {
-  return /[",\r\n]/.test(field) || field.includes(delimiter) || field.includes('"')
-    ? `"${field.replace(/"/g, '""')}"`
-    : field
+  return /["\r\n]/.test(field) || field.includes(delimiter) ? `"${field.replace(/"/g, '""')}"` : field
 }
 
-export function toDelimited(rows: readonly ExportRow[], columns: readonly ExportColumn[], delimiter: string): string {
-  const header = columns.map(c => c.label).join(delimiter)
+export function toDelimited(rows: readonly ExportRow[], columns: readonly { key: string; label: string }[], delimiter: string): string {
+  const header = columns.map(c => quoteIfNeeded(c.label, delimiter)).join(delimiter)
   const body = rows.map(row => columns.map(c => quoteIfNeeded(cellString(row[c.key] ?? null), delimiter)).join(delimiter))
   return [header, ...body].join('\r\n')
 }
@@ -201,28 +238,26 @@ export function toTSV(rows: readonly ExportRow[], columns: readonly ExportColumn
   return toDelimited(rows, columns, '\t')
 }
 
-/** JSONL matching json.dumps(record, ensure_ascii=False, default=str). */
 export function toJSONL(rows: readonly ExportRow[], columns: readonly ExportColumn[]): string {
-  const render = (value: ExportValue): string => {
-    if (value === null) return 'null'
-    if (typeof value === 'number') return pythonCellNumber(value)
-    if (typeof value === 'boolean') return value ? 'true' : 'false'
-    return JSON.stringify(value)
-  }
-  return rows
-    .map(row => `{${columns.map(c => `${JSON.stringify(c.label)}:${render(row[c.key] ?? null)}`).join(',')}}`)
-    .join('\n')
+  return rows.map(row => JSON.stringify(Object.fromEntries(columns.map(c => [c.label, row[c.key] ?? null])))).join('\n')
 }
 
-export function toXLSX(rows: readonly ExportRow[], columns: readonly ExportColumn[]): ArrayBuffer {
-  const aoa = [
-    columns.map(c => c.label),
-    ...rows.map(row => columns.map(c => row[c.key] ?? null)),
-  ]
-  const sheet = XLSX.utils.aoa_to_sheet(aoa)
+export function toXLSX(sheets: Array<{ name: string; rows: readonly ExportRow[]; columns: readonly ExportColumn[] }>): ArrayBuffer {
   const book = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(book, sheet, 'Results')
+  const used = new Set<string>()
+  for (const sheet of sheets) {
+    const aoa = [sheet.columns.map(c => c.label), ...sheet.rows.map(row => sheet.columns.map(c => row[c.key] ?? null))]
+    let name = sheet.name.replace(/[\\/?*[\]:]/g, '_').slice(0, 31) || 'Sheet'
+    let n = 2
+    while (used.has(name)) name = `${name.slice(0, 28)}_${n++}`
+    used.add(name)
+    XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet(aoa), name)
+  }
   return XLSX.write(book, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
+}
+
+export function plainColumns(names: readonly string[]): ExportColumn[] {
+  return names.map(name => ({ key: name, label: name }))
 }
 
 export const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -241,4 +276,8 @@ export function download(name: string, data: BlobPart | BlobPart[], mime: string
   a.click()
   a.remove()
   URL.revokeObjectURL(url)
+}
+
+export function callCount(run: FrozenRun): number {
+  return totalCalls(run)
 }

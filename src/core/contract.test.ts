@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildContractSchema,
-  compileContractChannels,
   effectiveFields,
   renderContractProse,
   resolveContract,
@@ -74,24 +73,3 @@ describe('renderContractProse', () => {
   })
 })
 
-describe('compileContractChannels', () => {
-  it('appends the block to the system prompt for system-after', () => {
-    const { userPrompt, systemPrompt } = compileContractChannels(
-      { fields: [{ name: 'x', type: 'string' }] },
-      'system-after',
-      'Question?',
-      'You are terse.',
-    )
-    expect(userPrompt).toBe('Question?')
-    expect(systemPrompt).toContain('<output-format>')
-    expect(systemPrompt.startsWith('You are terse.')).toBe(true)
-  })
-
-  it('prepends to the user prompt for user-before, and none does nothing', () => {
-    const prepend = compileContractChannels({ fields: [{ name: 'x', type: 'string' }] }, 'user-before', 'Q', 'S')
-    expect(prepend.userPrompt.startsWith('<output-format>')).toBe(true)
-    const untouched = compileContractChannels({ fields: [{ name: 'x', type: 'string' }] }, 'none', 'Q', 'S')
-    expect(untouched.userPrompt).toBe('Q')
-    expect(untouched.systemPrompt).toBe('S')
-  })
-})

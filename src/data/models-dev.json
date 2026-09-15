@@ -1,0 +1,1477 @@
+{
+  "fetchedAt": "2026-09-15T02:32:30.454Z",
+  "source": "https://models.dev/api.json",
+  "providers": {
+    "openai": {
+      "gpt-5-nano": {
+        "name": "GPT-5 Nano",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "minimal",
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 400000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 0.05,
+          "output": 0.4
+        },
+        "release_date": "2025-08-07",
+        "last_updated": "2025-08-07"
+      },
+      "gpt-4.1-nano": {
+        "name": "GPT-4.1 nano",
+        "temperature": true,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": true,
+        "limit": {
+          "context": 1047576,
+          "output": 32768
+        },
+        "cost": {
+          "input": 0.1,
+          "output": 0.4
+        },
+        "release_date": "2025-04-14",
+        "last_updated": "2025-04-14"
+      },
+      "gpt-4o-2024-05-13": {
+        "name": "GPT-4o (2024-05-13)",
+        "temperature": true,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": true,
+        "limit": {
+          "context": 128000,
+          "output": 4096
+        },
+        "cost": {
+          "input": 5,
+          "output": 15
+        },
+        "release_date": "2024-05-13",
+        "last_updated": "2024-05-13"
+      },
+      "gpt-5-pro": {
+        "name": "GPT-5 Pro",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "high"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 400000,
+          "output": 272000
+        },
+        "cost": {
+          "input": 15,
+          "output": 120
+        },
+        "release_date": "2025-10-06",
+        "last_updated": "2025-10-06"
+      },
+      "chatgpt-image-latest": {
+        "name": "chatgpt-image-latest",
+        "temperature": false,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": null,
+        "limit": {
+          "context": 0,
+          "output": 0
+        },
+        "cost": null,
+        "release_date": "2025-12-16",
+        "last_updated": "2025-12-16"
+      },
+      "gpt-5.6-sol": {
+        "name": "GPT-5.6 Sol",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 1050000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 4,
+          "output": 20
+        },
+        "release_date": "2026-07-09",
+        "last_updated": "2026-07-09"
+      },
+      "gpt-4o-2024-08-06": {
+        "name": "GPT-4o (2024-08-06)",
+        "temperature": true,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": true,
+        "limit": {
+          "context": 128000,
+          "output": 16384
+        },
+        "cost": {
+          "input": 2.5,
+          "output": 10
+        },
+        "release_date": "2024-08-06",
+        "last_updated": "2024-08-06"
+      },
+      "gpt-6-astra": {
+        "name": "GPT-6 Astra",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 1050000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 10,
+          "output": 50
+        },
+        "release_date": "2026-09-04",
+        "last_updated": "2026-09-04"
+      },
+      "gpt-5.2-pro": {
+        "name": "GPT-5.2 Pro",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          }
+        ],
+        "structured_output": false,
+        "limit": {
+          "context": 400000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 21,
+          "output": 168
+        },
+        "release_date": "2025-12-11",
+        "last_updated": "2025-12-11"
+      },
+      "gpt-5.3-codex-spark": {
+        "name": "GPT-5.3 Codex Spark",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 128000,
+          "output": 32000
+        },
+        "cost": {
+          "input": 1.75,
+          "output": 14
+        },
+        "release_date": "2026-02-05",
+        "last_updated": "2026-02-05"
+      },
+      "gpt-4.1-mini": {
+        "name": "GPT-4.1 mini",
+        "temperature": true,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": true,
+        "limit": {
+          "context": 1047576,
+          "output": 32768
+        },
+        "cost": {
+          "input": 0.4,
+          "output": 1.6
+        },
+        "release_date": "2025-04-14",
+        "last_updated": "2025-04-14"
+      },
+      "gpt-5.4": {
+        "name": "GPT-5.4",
+        "temperature": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 1050000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 2.5,
+          "output": 15
+        },
+        "release_date": "2026-03-05",
+        "last_updated": "2026-03-05"
+      },
+      "gpt-4-turbo": {
+        "name": "GPT-4 Turbo",
+        "temperature": true,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": false,
+        "limit": {
+          "context": 128000,
+          "output": 4096
+        },
+        "cost": {
+          "input": 10,
+          "output": 30
+        },
+        "release_date": "2023-11-06",
+        "last_updated": "2024-04-09"
+      },
+      "gpt-5.1": {
+        "name": "GPT-5.1",
+        "temperature": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 400000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 1.25,
+          "output": 10
+        },
+        "release_date": "2025-11-13",
+        "last_updated": "2025-11-13"
+      },
+      "o1": {
+        "name": "o1",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 200000,
+          "output": 100000
+        },
+        "cost": {
+          "input": 15,
+          "output": 60
+        },
+        "release_date": "2024-12-05",
+        "last_updated": "2024-12-05"
+      },
+      "gpt-4o": {
+        "name": "GPT-4o",
+        "temperature": true,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": true,
+        "limit": {
+          "context": 128000,
+          "output": 16384
+        },
+        "cost": {
+          "input": 2.5,
+          "output": 10
+        },
+        "release_date": "2024-05-13",
+        "last_updated": "2024-08-06"
+      },
+      "gpt-5.6-luna": {
+        "name": "GPT-5.6 Luna",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 1050000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 0.2,
+          "output": 1.2
+        },
+        "release_date": "2026-07-09",
+        "last_updated": "2026-07-09"
+      },
+      "gpt-5.3-codex": {
+        "name": "GPT-5.3 Codex",
+        "temperature": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 400000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 1.75,
+          "output": 14
+        },
+        "release_date": "2026-02-05",
+        "last_updated": "2026-02-05"
+      },
+      "gpt-4o-mini": {
+        "name": "GPT-4o mini",
+        "temperature": true,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": true,
+        "limit": {
+          "context": 128000,
+          "output": 16384
+        },
+        "cost": {
+          "input": 0.15,
+          "output": 0.6
+        },
+        "release_date": "2024-07-18",
+        "last_updated": "2024-07-18"
+      },
+      "gpt-image-1.5": {
+        "name": "gpt-image-1.5",
+        "temperature": false,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": null,
+        "limit": {
+          "context": 0,
+          "output": 0
+        },
+        "cost": null,
+        "release_date": "2025-11-25",
+        "last_updated": "2025-11-25"
+      },
+      "o1-pro": {
+        "name": "o1-pro",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 200000,
+          "output": 100000
+        },
+        "cost": {
+          "input": 150,
+          "output": 600
+        },
+        "release_date": "2025-03-19",
+        "last_updated": "2025-03-19"
+      },
+      "gpt-4.1": {
+        "name": "GPT-4.1",
+        "temperature": true,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": true,
+        "limit": {
+          "context": 1047576,
+          "output": 32768
+        },
+        "cost": {
+          "input": 2,
+          "output": 8
+        },
+        "release_date": "2025-04-14",
+        "last_updated": "2025-04-14"
+      },
+      "text-embedding-ada-002": {
+        "name": "text-embedding-ada-002",
+        "temperature": false,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": null,
+        "limit": {
+          "context": 8192,
+          "output": 1536
+        },
+        "cost": {
+          "input": 0.1,
+          "output": 0
+        },
+        "release_date": "2022-12-15",
+        "last_updated": "2022-12-15"
+      },
+      "gpt-image-1": {
+        "name": "gpt-image-1",
+        "temperature": false,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": null,
+        "limit": {
+          "context": 0,
+          "output": 0
+        },
+        "cost": null,
+        "release_date": "2025-04-24",
+        "last_updated": "2025-04-24"
+      },
+      "gpt-5.4-nano": {
+        "name": "GPT-5.4 nano",
+        "temperature": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 400000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 0.2,
+          "output": 1.25
+        },
+        "release_date": "2026-03-17",
+        "last_updated": "2026-03-17"
+      },
+      "gpt-5.5-pro": {
+        "name": "GPT-5.5 Pro",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 1050000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 30,
+          "output": 180
+        },
+        "release_date": "2026-04-23",
+        "last_updated": "2026-04-23"
+      },
+      "gpt-image-1-mini": {
+        "name": "gpt-image-1-mini",
+        "temperature": false,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": null,
+        "limit": {
+          "context": 0,
+          "output": 0
+        },
+        "cost": null,
+        "release_date": "2025-09-26",
+        "last_updated": "2025-09-26"
+      },
+      "gpt-5.4-mini": {
+        "name": "GPT-5.4 mini",
+        "temperature": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 400000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 0.75,
+          "output": 4.5
+        },
+        "release_date": "2026-03-17",
+        "last_updated": "2026-03-17"
+      },
+      "gpt-image-2": {
+        "name": "gpt-image-2",
+        "temperature": false,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": null,
+        "limit": {
+          "context": 0,
+          "output": 0
+        },
+        "cost": {
+          "input": 5,
+          "output": 30
+        },
+        "release_date": "2026-04-21",
+        "last_updated": "2026-04-21"
+      },
+      "gpt-3.5-turbo": {
+        "name": "GPT-3.5-turbo",
+        "temperature": true,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": false,
+        "limit": {
+          "context": 16385,
+          "output": 4096
+        },
+        "cost": {
+          "input": 0.5,
+          "output": 1.5
+        },
+        "release_date": "2023-03-01",
+        "last_updated": "2023-11-06"
+      },
+      "gpt-5.6": {
+        "name": "GPT-5.6",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 1050000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 4,
+          "output": 20
+        },
+        "release_date": "2026-07-09",
+        "last_updated": "2026-07-09"
+      },
+      "text-embedding-3-small": {
+        "name": "text-embedding-3-small",
+        "temperature": false,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": null,
+        "limit": {
+          "context": 8191,
+          "output": 1536
+        },
+        "cost": {
+          "input": 0.02,
+          "output": 0
+        },
+        "release_date": "2024-01-25",
+        "last_updated": "2024-01-25"
+      },
+      "gpt-5-mini": {
+        "name": "GPT-5 Mini",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "minimal",
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 400000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 0.25,
+          "output": 2
+        },
+        "release_date": "2025-08-07",
+        "last_updated": "2025-08-07"
+      },
+      "gpt-5.4-pro": {
+        "name": "GPT-5.4 Pro",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          }
+        ],
+        "structured_output": false,
+        "limit": {
+          "context": 1050000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 30,
+          "output": 180
+        },
+        "release_date": "2026-03-05",
+        "last_updated": "2026-03-05"
+      },
+      "text-embedding-3-large": {
+        "name": "text-embedding-3-large",
+        "temperature": false,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": null,
+        "limit": {
+          "context": 8191,
+          "output": 3072
+        },
+        "cost": {
+          "input": 0.13,
+          "output": 0
+        },
+        "release_date": "2024-01-25",
+        "last_updated": "2024-01-25"
+      },
+      "gpt-5.6-terra": {
+        "name": "GPT-5.6 Terra",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 1050000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 2,
+          "output": 12
+        },
+        "release_date": "2026-07-09",
+        "last_updated": "2026-07-09"
+      },
+      "gpt-4": {
+        "name": "GPT-4",
+        "temperature": true,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": false,
+        "limit": {
+          "context": 8192,
+          "output": 8192
+        },
+        "cost": {
+          "input": 30,
+          "output": 60
+        },
+        "release_date": "2023-11-06",
+        "last_updated": "2024-04-09"
+      },
+      "gpt-5.2": {
+        "name": "GPT-5.2",
+        "temperature": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 400000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 1.75,
+          "output": 14
+        },
+        "release_date": "2025-12-11",
+        "last_updated": "2025-12-11"
+      },
+      "gpt-5": {
+        "name": "GPT-5",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "minimal",
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 400000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 1.25,
+          "output": 10
+        },
+        "release_date": "2025-08-07",
+        "last_updated": "2025-08-07"
+      },
+      "gpt-5.2-chat-latest": {
+        "name": "GPT-5.2 Chat",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "medium"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 128000,
+          "output": 16384
+        },
+        "cost": {
+          "input": 1.75,
+          "output": 14
+        },
+        "release_date": "2025-12-11",
+        "last_updated": "2025-12-11"
+      },
+      "o4-mini": {
+        "name": "o4-mini",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 200000,
+          "output": 100000
+        },
+        "cost": {
+          "input": 1.1,
+          "output": 4.4
+        },
+        "release_date": "2025-04-16",
+        "last_updated": "2025-04-16"
+      },
+      "gpt-realtime-2.1": {
+        "name": "GPT-Realtime-2.1",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          }
+        ],
+        "structured_output": false,
+        "limit": {
+          "context": 128000,
+          "output": 32000
+        },
+        "cost": {
+          "input": 4,
+          "output": 24
+        },
+        "release_date": "2026-07-06",
+        "last_updated": "2026-07-06"
+      },
+      "o3-mini": {
+        "name": "o3-mini",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 200000,
+          "output": 100000
+        },
+        "cost": {
+          "input": 1.1,
+          "output": 4.4
+        },
+        "release_date": "2024-12-20",
+        "last_updated": "2025-01-29"
+      },
+      "o3": {
+        "name": "o3",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 200000,
+          "output": 100000
+        },
+        "cost": {
+          "input": 2,
+          "output": 8
+        },
+        "release_date": "2025-04-16",
+        "last_updated": "2025-04-16"
+      },
+      "o3-pro": {
+        "name": "o3-pro",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 200000,
+          "output": 100000
+        },
+        "cost": {
+          "input": 20,
+          "output": 80
+        },
+        "release_date": "2025-06-10",
+        "last_updated": "2025-06-10"
+      },
+      "gpt-5.3-chat-latest": {
+        "name": "GPT-5.3 Chat (latest)",
+        "temperature": true,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": true,
+        "limit": {
+          "context": 128000,
+          "output": 16384
+        },
+        "cost": {
+          "input": 1.75,
+          "output": 14
+        },
+        "release_date": "2026-03-03",
+        "last_updated": "2026-03-03"
+      },
+      "gpt-5.5": {
+        "name": "GPT-5.5",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 1050000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 5,
+          "output": 30
+        },
+        "release_date": "2026-04-23",
+        "last_updated": "2026-04-23"
+      },
+      "gpt-4o-2024-11-20": {
+        "name": "GPT-4o (2024-11-20)",
+        "temperature": true,
+        "reasoning": false,
+        "reasoning_options": [],
+        "structured_output": true,
+        "limit": {
+          "context": 128000,
+          "output": 16384
+        },
+        "cost": {
+          "input": 2.5,
+          "output": 10
+        },
+        "release_date": "2024-11-20",
+        "last_updated": "2024-11-20"
+      }
+    },
+    "anthropic": {
+      "claude-sonnet-4-6": {
+        "name": "Claude Sonnet 4.6",
+        "temperature": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "max"
+            ]
+          },
+          {
+            "type": "budget_tokens",
+            "min": 1024
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 1000000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 3,
+          "output": 15
+        },
+        "release_date": "2026-02-17",
+        "last_updated": "2026-03-13"
+      },
+      "claude-opus-5": {
+        "name": "Claude Opus 5",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 1000000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 5,
+          "output": 25
+        },
+        "release_date": "2026-07-24",
+        "last_updated": "2026-07-24"
+      },
+      "claude-opus-4-5": {
+        "name": "Claude Opus 4.5 (latest)",
+        "temperature": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          {
+            "type": "budget_tokens",
+            "min": 1024
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 200000,
+          "output": 64000
+        },
+        "cost": {
+          "input": 5,
+          "output": 25
+        },
+        "release_date": "2025-11-24",
+        "last_updated": "2025-11-24"
+      },
+      "claude-fable-5-1": {
+        "name": "Claude Fable 5.1",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 1000000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 10,
+          "output": 50
+        },
+        "release_date": "2026-09-01",
+        "last_updated": "2026-09-01"
+      },
+      "claude-opus-4-6": {
+        "name": "Claude Opus 4.6",
+        "temperature": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "max"
+            ]
+          },
+          {
+            "type": "budget_tokens",
+            "min": 1024
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 1000000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 5,
+          "output": 25
+        },
+        "release_date": "2026-02-04",
+        "last_updated": "2026-03-13"
+      },
+      "claude-sonnet-4-5-20250929": {
+        "name": "Claude Sonnet 4.5",
+        "temperature": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "budget_tokens",
+            "min": 1024
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 1000000,
+          "output": 64000
+        },
+        "cost": {
+          "input": 3,
+          "output": 15
+        },
+        "release_date": "2025-09-29",
+        "last_updated": "2025-09-29"
+      },
+      "claude-opus-4-7": {
+        "name": "Claude Opus 4.7",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 1000000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 5,
+          "output": 25
+        },
+        "release_date": "2026-04-14",
+        "last_updated": "2026-04-16"
+      },
+      "claude-haiku-4-5-20251001": {
+        "name": "Claude Haiku 4.5",
+        "temperature": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "budget_tokens",
+            "min": 1024
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 200000,
+          "output": 64000
+        },
+        "cost": {
+          "input": 1,
+          "output": 5
+        },
+        "release_date": "2025-10-15",
+        "last_updated": "2025-10-15"
+      },
+      "claude-fable-5": {
+        "name": "Claude Fable 5",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 1000000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 10,
+          "output": 50
+        },
+        "release_date": "2026-06-07",
+        "last_updated": "2026-06-09"
+      },
+      "claude-haiku-4-5": {
+        "name": "Claude Haiku 4.5 (latest)",
+        "temperature": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "budget_tokens",
+            "min": 1024
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 200000,
+          "output": 64000
+        },
+        "cost": {
+          "input": 1,
+          "output": 5
+        },
+        "release_date": "2025-10-15",
+        "last_updated": "2025-10-15"
+      },
+      "claude-sonnet-4-5": {
+        "name": "Claude Sonnet 4.5 (latest)",
+        "temperature": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "budget_tokens",
+            "min": 1024
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 1000000,
+          "output": 64000
+        },
+        "cost": {
+          "input": 3,
+          "output": 15
+        },
+        "release_date": "2025-09-29",
+        "last_updated": "2025-09-29"
+      },
+      "claude-opus-4-8": {
+        "name": "Claude Opus 4.8",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 1000000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 5,
+          "output": 25
+        },
+        "release_date": "2026-05-28",
+        "last_updated": "2026-05-28"
+      },
+      "claude-sonnet-5": {
+        "name": "Claude Sonnet 5",
+        "temperature": false,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "toggle"
+          },
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 1000000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 2,
+          "output": 10
+        },
+        "release_date": "2026-06-29",
+        "last_updated": "2026-06-30"
+      },
+      "claude-opus-4-5-20251101": {
+        "name": "Claude Opus 4.5",
+        "temperature": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          {
+            "type": "budget_tokens",
+            "min": 1024
+          }
+        ],
+        "structured_output": true,
+        "limit": {
+          "context": 200000,
+          "output": 64000
+        },
+        "cost": {
+          "input": 5,
+          "output": 25
+        },
+        "release_date": "2025-11-24",
+        "last_updated": "2025-11-01"
+      }
+    }
+  }
+}

@@ -1,74 +1,78 @@
 import { execFileSync } from 'node:child_process'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { generateExperimentPy, generateRequirements, toPythonLiteral } from './py'
-import { presetById } from './providers'
-import type { RunMeta, RunSpec } from './types'
+import { freezeRun, totalCalls } from './freeze'
+import { inferPartition } from './partition'
+import { presetById } from './providers/presets'
+import { generateCasesCsv, generateExperimentJson, generateExperimentPy } from './py'
+import { canonicalJson, coordinateAt, renderCall } from './render'
+import { CLAUDE_LIKE, GPT_LIKE, ROLES, ROWS } from './testing/fixtures'
 
-const META: RunMeta = {
-  ts: '2026-08-17T10:35:00.000Z',
-  providerId: 'openrouter',
-  providerLabel: 'OpenRouter',
-  promptTemplate: 'Classify: {{text}}',
-  systemTemplate: 'Be terse.',
-  contract: null,
-  parserId: 'json-unstack',
-  repeats: 2,
+const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
+const runtimeDir = join(root, 'src', 'core', 'py', 'runtime')
+const scratch = join(root, 'tmp', 'py-parity')
+
+function hasPython(): boolean {
+  try { execFileSync('python3', ['-c', 'import sys; sys.exit(0)'], { stdio: 'ignore' }); return true } catch { return false }
 }
 
-function specs(): RunSpec[] {
-  const openrouter = presetById('openrouter')
-  return [{
-    provider: openrouter.provider,
-    apiKey: '',
-    model: 'openai/gpt-4o-mini',
-    supportedParams: ['max_tokens', 'temperature'],
-    params: { temperature: 0.4, maxTokens: 128 },
-    prompt: 'Classify: refund',
-    system: 'Be terse.',
-    stream: false,
-    zdr: false,
-    caseLabel: 'Row 1',
-    bindings: { text: 'refund' },
-    repeatIndex: 0,
-  }]
+const pythonAvailable = hasPython()
+
+async function frozen(provider: 'openai' | 'anthropic') {
+  const rows = [...ROWS, { id: 'A6', text: 'Quotes "inside" and unicode é 日本, braces {{not a placeholder}} and a\nnewline', source: 'x', frame: '', score: '' }]
+  return freezeRun({
+    preset: presetById(provider),
+    baseUrl: presetById(provider).baseUrl,
+    source: { name: 'articles.csv', bytes: 1, sha256: 'x', rowCount: rows.length },
+    rows,
+    roles: ROLES,
+    partition: inferPartition(rows, ROLES),
+    systemTemplate: 'You code {{text}} frames.',
+    itemTemplate: 'Article: {{text}}',
+    contract: { fields: [{ name: 'frame', type: 'enum', values: ['economic', 'civic'] }, { name: 'score', type: 'integer' }] },
+    parserId: 'json-unstack',
+    models: [{ model: provider === 'openai' ? GPT_LIKE : CLAUDE_LIKE, settings: { extras: { top_p: 0.9 } } }],
+    shared: { outputLength: 300, temperature: 0.5, effort: 'low', responseFormat: 'auto' },
+    repeats: 2,
+    concurrency: 3,
+    retries: 1,
+    timeoutMs: 1000,
+  })
 }
 
-describe('toPythonLiteral', () => {
-  it('never rewrites strings and emits Python literals', () => {
-    expect(toPythonLiteral({ a: 'verified: false', b: [1, 2.5, null, true], c: ': null' })).toBe(
-      `{\n    "a": "verified: false",\n    "b": [\n        1,\n        2.5,\n        None,\n        True\n    ],\n    "c": ": null"\n}`,
-    )
-  })
-})
+describe.skipIf(!pythonAvailable)('INVARIANT 3: the Python bundle builds the same bodies as the browser', () => {
+  for (const provider of ['openai', 'anthropic'] as const) {
+    it(`${provider}: every coordinate's body matches after canonical JSON, and the task count matches`, async () => {
+      const run = await frozen(provider)
+      const dir = join(scratch, provider)
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'experiment.json'), JSON.stringify(generateExperimentJson(run, 'parity')))
+      writeFileSync(join(dir, 'cases.csv'), generateCasesCsv(run))
+      const total = totalCalls(run)
+      const indices = Array.from({ length: total }, (_, i) => String(i))
+      const script = `
+import sys, json
+sys.path.insert(0, sys.argv[1])
+from multiaiball import frozen
+exp = frozen.load_experiment(sys.argv[2]); cases = frozen.load_cases(sys.argv[3])
+tasks = list(frozen.FrozenTasks(exp["run"], cases))
+print(len(tasks) * len(exp["run"]["models"]))
+for i in sys.argv[4:]:
+    print(frozen.canonical(frozen.body_for(exp, cases, int(i))))
+`
+      const out = execFileSync('python3', ['-c', script, runtimeDir, join(dir, 'experiment.json'), join(dir, 'cases.csv'), ...indices], { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 }).trim().split('\n')
+      expect(Number(out[0])).toBe(total)
+      for (let index = 0; index < total; index++) {
+        const browser = canonicalJson(renderCall(run, coordinateAt(run, index)).body)
+        expect(out[index + 1]).toBe(browser)
+      }
+    })
+  }
 
-describe('generateExperimentPy', () => {
-  it('emits sentinel bodies and embedded rows', () => {
-    const py = generateExperimentPy({ name: 'test', meta: META, specs: specs(), parser: null })
-    expect(py).toContain('from multiaiball import run, RetryPolicy, RowsTasks')
-    expect(py).toContain('"Authorization": "Bearer {{API_KEY}}"')
-    expect(py).toContain('{{PROMPT}}')
-    expect(py).toContain('{{SYSTEM_PROMPT}}')
-    expect(py).toContain('"provider": "openrouter"')
-    expect(py).toContain('"text": "refund"')
-    expect(py).toContain('max_retries=2')
-  })
-
-  it('embeds the parser corpus when a JSON parser is configured', () => {
-    const py = generateExperimentPy({ name: 'test', meta: META, specs: specs(), parser: { id: 'json-unstack', name: 'JSON Object (Unstack to Columns)', kind: 'json', outputType: 'json' } })
-    expect(py).toContain('PARSER_CORPUS = [')
-    expect(py).toContain('--verify-parsers')
-  })
-
-  it('produces syntactically valid Python (py_compile)', () => {
-    const py = generateExperimentPy({ name: 'test', meta: META, specs: specs(), parser: null })
-    execFileSync('python3', ['-c', `import py_compile, sys\nimport tempfile, os\nfd, path = tempfile.mkstemp(suffix='.py')\nos.write(fd, sys.argv[1].encode())\nos.close(fd)\npy_compile.compile(path, doraise=True)\nprint('OK')\n`, py], { stdio: 'pipe' })
-  })
-})
-
-describe('generateRequirements', () => {
-  it('adds json-repair only when the parser needs it', () => {
-    expect(generateRequirements({ id: 'json-unstack', name: '', kind: 'json', outputType: 'json' })).toContain('json-repair>=0.25.0')
-    expect(generateRequirements({ id: 'first-number', name: '', kind: 'regex', outputType: 'number', pattern: 'x', captureGroup: 1 })).not.toContain('json-repair')
+  it('experiment.py compiles', () => {
+    execFileSync('python3', ['-c', 'import py_compile, sys, tempfile, os\nfd, p = tempfile.mkstemp(suffix=".py"); os.write(fd, sys.argv[1].encode()); os.close(fd); py_compile.compile(p, doraise=True)', generateExperimentPy('x "quoted"')], { stdio: 'pipe' })
   })
 })

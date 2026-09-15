@@ -15,7 +15,7 @@
 
 import { jsonrepair } from 'jsonrepair'
 
-import type { BuiltinParserDef, ParsedValue } from './types'
+import type { BuiltinParserDef, ParseStatus, ParsedValue } from './types'
 import { PARSER_ERROR } from './types'
 
 // --- extraction half ---------------------------------------------------------
@@ -63,20 +63,26 @@ type JsonObject = Record<string, unknown>
  * (the scanner only yields balanced candidates). Plain objects only; NaN and
  * Infinity rejected even after repair. Returns null when nothing usable. */
 export function parseJsonObject(candidate: string): JsonObject | null {
+  return parseJsonObjectDetailed(candidate).value
+}
+
+/** Same, but says whether repair was needed: the difference between what the
+ * model wrote and what the app recovered stays visible in the results. */
+export function parseJsonObjectDetailed(candidate: string): { value: JsonObject | null; repaired: boolean } {
   try {
     const parsed = JSON.parse(candidate)
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as JsonObject : null
+    return { value: parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as JsonObject : null, repaired: false }
   } catch {
     // fall through to repair
   }
   try {
     // jsonrepair returns repaired TEXT, not an object.
     const repaired = JSON.parse(jsonrepair(candidate)) as unknown
-    if (!repaired || typeof repaired !== 'object' || Array.isArray(repaired)) return null
-    if (containsNonFinite(repaired)) return null
-    return repaired as JsonObject
+    if (!repaired || typeof repaired !== 'object' || Array.isArray(repaired)) return { value: null, repaired: true }
+    if (containsNonFinite(repaired)) return { value: null, repaired: true }
+    return { value: repaired as JsonObject, repaired: true }
   } catch {
-    return null
+    return { value: null, repaired: true }
   }
 }
 
@@ -84,13 +90,18 @@ export function parseJsonObject(candidate: string): JsonObject | null {
  * candidate that neither parse nor repair could use makes the whole response a
  * PARSER_ERROR (distinct from null = no JSON-like content at all). */
 export function extractLargestJsonObject(content: string): JsonObject | null | typeof PARSER_ERROR {
+  return extractLargestJsonObjectDetailed(content).value
+}
+
+export function extractLargestJsonObjectDetailed(content: string): { value: JsonObject | null | typeof PARSER_ERROR; repaired: boolean } {
   const candidates = scanJsonObjects(content)
-  if (candidates.length === 0) return null
+  if (candidates.length === 0) return { value: null, repaired: false }
   let best: JsonObject | null = null
   let bestSize = -1
+  let bestRepaired = false
   let anyFailed = false
   for (const candidate of candidates) {
-    const parsed = parseJsonObject(candidate)
+    const { value: parsed, repaired } = parseJsonObjectDetailed(candidate)
     if (parsed === null) {
       anyFailed = true
       continue
@@ -98,10 +109,11 @@ export function extractLargestJsonObject(content: string): JsonObject | null | t
     if (Object.keys(parsed).length >= bestSize) {
       bestSize = Object.keys(parsed).length
       best = parsed
+      bestRepaired = repaired
     }
   }
-  if (best === null && anyFailed) return PARSER_ERROR
-  return best
+  if (best === null && anyFailed) return { value: PARSER_ERROR, repaired: false }
+  return { value: best, repaired: bestRepaired }
 }
 
 // --- column half (language-neutral contract) ---------------------------------
@@ -286,4 +298,21 @@ export function parseWithBuiltin(id: string, content: string): ParsedValue {
   }
   if (def.kind === 'regex') return applyRegex(def, content)
   return applyText(def, content)
+}
+
+/** Parse a response with the run's parser and say how it went: `none` (no
+ * parser), `strict`, `repaired` (JSON needed jsonrepair), or `failed`
+ * (brace-shaped content nothing could parse, or a regex that did not match). */
+export function parseResponse(parserId: string | null, content: string): { parsed: ParsedValue; status: ParseStatus } {
+  if (!parserId) return { parsed: null, status: 'none' }
+  const def = builtinParserById(parserId)
+  if (!def) return { parsed: null, status: 'none' }
+  if (def.kind === 'json' && parserId !== 'json-object') {
+    const { value, repaired } = extractLargestJsonObjectDetailed(content)
+    if (value === PARSER_ERROR) return { parsed: PARSER_ERROR, status: 'failed' }
+    if (value === null) return { parsed: null, status: 'failed' }
+    return { parsed: value, status: repaired ? 'repaired' : 'strict' }
+  }
+  const parsed = parseWithBuiltin(parserId, content)
+  return { parsed, status: parsed === null ? 'failed' : 'strict' }
 }

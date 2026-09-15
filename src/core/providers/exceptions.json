@@ -1,0 +1,11 @@
+{
+  "_readme": [
+    "Hand-written corrections to what the catalogs report about one model.",
+    "Every entry names provider, exact model ids, the guidance fields it",
+    "overrides, a note saying what was observed and when, and expiresWhen",
+    "saying what observation would retire it. A machine never writes here;",
+    "the probe rig (scripts/probe) writes candidates to tmp/, a person promotes.",
+    "Empty at launch and allowed to stay empty forever."
+  ],
+  "entries": []
+}

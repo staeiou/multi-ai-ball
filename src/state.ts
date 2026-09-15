@@ -1,67 +1,76 @@
-// Persistence boundary: settings + saved templates only. Every persisted
-// object is a tolerant envelope — readers ignore unknown fields and default
+// Persistence boundary: settings and saved templates only. Every persisted
+// object is a tolerant envelope: readers ignore unknown fields and default
 // missing ones, so adding a field is never a migration. Sheets and results are
-// never persisted (export is the save).
+// never persisted here (results go to runstore.ts, per call, as they finish).
 
-import type { CaseSource, ContractAuthoring, ContractPlacement, ParamOverrides } from './core/types'
+import type { ColumnRole, ContractAuthoring, ModelSettings, ProviderId, SharedParams } from './core/types'
 
-export const STATE_KEY = 'multiaiball:state:v2'
-export const KEY_SESSION_KEY = 'multiaiball:key:session:v2'
-export const KEY_LOCAL_KEY = 'multiaiball:key:remembered:v2'
-export const RECENT_KEY = 'multiaiball:recent:v2'
-export const TEMPLATES_KEY = 'multiaiball:templates:v2'
+export const STATE_KEY = 'multiaiball:state:v3'
+export const KEY_SESSION_KEY = 'multiaiball:key:session:v3'
+export const KEY_LOCAL_KEY = 'multiaiball:key:remembered:v3'
+export const RECENT_KEY = 'multiaiball:recent:v3'
+export const TEMPLATES_KEY = 'multiaiball:templates:v3'
+
+export type Flow = 'single' | 'sweep' | 'sheet'
+
+export interface SelectedModel {
+  id: string
+  settings: ModelSettings
+}
 
 export interface PersistedState {
   version: number
-  presetId: string
+  providerId: ProviderId
   customBase: string
+  flow: Flow
+  /** The item template (user channel). */
   prompt: string
+  /** The system template. */
   system: string
-  source: CaseSource
-  selected: string[]
-  params: ParamOverrides
-  stream: boolean
-  /** Runs with more calls than this never stream (progress counters instead). */
-  streamThreshold: number
-  zdr: boolean
-  retries: number
+  /** Sweep variables: name -> one value per line. */
+  sweep: Array<{ name: string; values: string }>
+  /** Sheet column roles by column name; the sheet itself is never persisted. */
+  roles: Record<string, ColumnRole>
+  selected: SelectedModel[]
+  shared: SharedParams
+  repeats: number
   concurrency: number
-  budget: number
-  /** OpenRouter's `:free` routes trade money for provider data use. Hidden by default. */
+  retries: number
+  timeoutMs: number
   hideFreeModels: boolean
-  /** Width of the available-models pane, 0..1 of the models stage. Additive
-   * field: an older stored state simply defaults it (no migration). */
+  zdrOnly: boolean
   splitRatio: number
   contract: ContractAuthoring
-  placement: ContractPlacement
   parserId: string | null
-  repeats: number
   dark: boolean
   keyRemember: boolean
 }
 
+export function defaultShared(): SharedParams {
+  return { outputLength: 2048, temperature: null, effort: null, responseFormat: 'auto' }
+}
+
 export function defaultState(): PersistedState {
   return {
-    version: 1,
-    presetId: 'openrouter',
+    version: 3,
+    providerId: 'openrouter',
     customBase: '',
+    flow: 'single',
     prompt: '',
     system: '',
-    source: { kind: 'single' },
+    sweep: [],
+    roles: {},
     selected: [],
-    params: { temperature: 0.7, maxTokens: 1024, topP: undefined },
-    stream: true,
-    streamThreshold: 100,
-    zdr: false,
-    retries: 2,
+    shared: defaultShared(),
+    repeats: 1,
     concurrency: 6,
-    budget: 0.005,
+    retries: 2,
+    timeoutMs: 120000,
     hideFreeModels: true,
+    zdrOnly: false,
     splitRatio: 0.5,
     contract: { fields: [], rationaleFirst: false, rationaleSpec: '', strictJson: true },
-    placement: 'system-after',
-    parserId: null,
-    repeats: 1,
+    parserId: 'json-unstack',
     dark: false,
     keyRemember: false,
   }
@@ -72,12 +81,12 @@ export function loadState(): PersistedState {
     const raw = localStorage.getItem(STATE_KEY)
     if (!raw) return defaultState()
     const parsed = JSON.parse(raw) as Partial<PersistedState>
-    const migrated: PersistedState = { ...defaultState(), ...parsed }
-    // Tolerant envelope: a persisted source may be a legacy string tag.
-    if (typeof (parsed as { source?: unknown }).source === 'string') {
-      migrated.source = { kind: 'single' }
-    }
-    return migrated
+    const merged: PersistedState = { ...defaultState(), ...parsed, shared: { ...defaultShared(), ...(parsed.shared ?? {}) } }
+    if (!Array.isArray(merged.selected)) merged.selected = []
+    merged.selected = merged.selected
+      .filter(s => s && typeof s === 'object' && typeof (s as SelectedModel).id === 'string')
+      .map(s => ({ id: s.id, settings: { ...(s.settings ?? {}), extras: s.settings?.extras ?? {} } }))
+    return merged
   } catch {
     return defaultState()
   }
@@ -117,10 +126,10 @@ export function saveKey(key: string, remember: boolean): void {
   }
 }
 
-// --- recent models (quick add) -----------------------------------------------
+// --- recent models -----------------------------------------------------------------
 
 export interface RecentItem {
-  presetId: string
+  providerId: string
   model: string
 }
 
@@ -136,14 +145,14 @@ export function loadRecent(): RecentItem[] {
 
 export function pushRecent(item: RecentItem, limit = 8): void {
   try {
-    const rest = loadRecent().filter(r => !(r.presetId === item.presetId && r.model === item.model))
+    const rest = loadRecent().filter(r => !(r.providerId === item.providerId && r.model === item.model))
     localStorage.setItem(RECENT_KEY, JSON.stringify([item, ...rest].slice(0, limit)))
   } catch {
-    // quick-add recents just do not persist
+    // recents just do not persist
   }
 }
 
-// --- saved templates (prompt + optional contract/parser; sheets never) -------
+// --- saved templates -----------------------------------------------------------------
 
 export interface SavedTemplate {
   id: string
