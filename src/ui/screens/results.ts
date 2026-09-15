@@ -41,7 +41,7 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
   const tableWrap = h('div', { class: 'final-table-wrap' })
   const saved = h('div', { class: 'saved-runs' })
 
-  const el = h('section', { class: 'card stage-card' },
+  const el = h('section', { class: 'card stage-card results-stage' },
     h('div', { class: 'stage-heading' }, h('h2', {}, 'Results')),
     tally,
     progress,

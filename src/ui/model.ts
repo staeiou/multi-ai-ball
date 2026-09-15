@@ -20,8 +20,16 @@ import type { AppData, Session } from './store'
 export const SWEEP_WARN = 1000
 export const SWEEP_MAX = 20000
 
+/** The blanks the prompt (and instructions) actually use, in order of first
+ * appearance. state.sweep holds values by name; a name with no placeholder
+ * does not multiply the cases. */
+export function sweepPlaceholders(state: PersistedState): string[] {
+  return promptPlaceholderNames(state.prompt, state.system)
+}
+
 export function sweepVariables(state: PersistedState): SweepVariable[] {
-  return state.sweep.map(v => ({ name: v.name.trim(), values: parseSweepValues(v.values) })).filter(v => v.name && v.values.length)
+  const byName = new Map(state.sweep.map(v => [v.name.trim(), parseSweepValues(v.values)]))
+  return sweepPlaceholders(state).map(name => ({ name, values: byName.get(name) ?? [] })).filter(v => v.values.length)
 }
 
 /** The rows the current flow produces, with the roles that apply to them. */
@@ -105,9 +113,7 @@ export function promptProblems(data: AppData): string[] {
     const { roles } = currentRows(data)
     for (const p of templateProblems(state.prompt, state.system, roles, true)) problems.push(p.message)
   } else if (state.flow === 'sweep') {
-    const names = new Set(sweepVariables(state).map(v => v.name))
-    for (const name of promptPlaceholderNames(state.prompt, state.system)) if (!names.has(name)) problems.push(`{{${name}}} is not one of the variables`)
-    for (const name of names) if (!promptPlaceholderNames(state.prompt, state.system).includes(name)) problems.push(`Variable ${name} is never used in the prompt`)
+    // Every placeholder is a variable by definition; problems are about values (dataProblems).
   } else {
     const names = promptPlaceholderNames(state.prompt, state.system)
     if (names.length) problems.push(`{{${names[0]}}} has no value in single-prompt mode; use a sweep or a spreadsheet, or remove it`)
@@ -127,9 +133,13 @@ export function dataProblems(data: AppData): string[] {
     return problems
   }
   if (state.flow === 'sweep') {
-    const variables = sweepVariables(state)
-    if (variables.length === 0) return ['Add at least one variable with values']
-    const count = sweepCaseCount(variables)
+    if (!state.prompt.trim()) return ['Write the prompt, with {{blanks}} where a value should vary']
+    const names = sweepPlaceholders(state)
+    if (names.length === 0) return ['Put at least one blank like {{name}} in the prompt']
+    const filled = new Set(sweepVariables(state).map(v => v.name))
+    const empty = names.filter(n => !filled.has(n))
+    if (empty.length) return [`Give ${empty.map(n => `{{${n}}}`).join(' and ')} at least one value`]
+    const count = sweepCaseCount(sweepVariables(state))
     if (count > SWEEP_MAX) return [`${count.toLocaleString()} combinations is above the ${SWEEP_MAX.toLocaleString()} limit`]
   }
   return []
@@ -140,7 +150,7 @@ export function instructionProblems(data: AppData): string[] {
   const problems: string[] = []
   if (state.flow === 'sheet') {
     if (!state.system.trim() && !state.prompt.replace(/\{\{[^}]+\}\}/g, '').trim()) problems.push('Tell the model what to do with each row')
-  } else if (!state.prompt.trim()) problems.push(state.flow === 'sweep' ? 'Write the prompt, using {{variable}} where a value goes' : 'Write your prompt first')
+  } else if (state.flow === 'single' && !state.prompt.trim()) problems.push('Write your prompt first')
   for (const p of promptProblems(data)) if (!problems.includes(p) && !dataProblems(data).includes(p)) problems.push(p)
   return problems
 }

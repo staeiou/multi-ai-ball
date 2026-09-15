@@ -99,15 +99,16 @@ export function buildInstructionsScreen(store: Store): Screen {
       takeOver.hidden = true
       resetAuto.hidden = true
     } else {
-      heading.textContent = isSheet ? 'Tell the model what to do with each row. Be specific: what to look for, how to decide, what counts.' : 'Write the prompt with blanks, and the instructions the model follows for every combination.'
+      heading.textContent = isSheet ? 'Tell the model what to do with each row. Be specific: what to look for, how to decide, what counts.' : 'Optional background instructions the model follows for every combination. The prompt itself is on the previous screen.'
       systemLabel.textContent = isSheet ? 'What should the model do with each row?' : 'Instructions (optional)'
       system.placeholder = isSheet ? 'e.g. Read the article and decide which frame it uses: economic, civic, or human-interest. Give a confidence from 1 to 5.' : 'e.g. Answer as a hiring manager reviewing this resume.'
       systemField.hidden = false
       const { roles } = currentRows(data)
       const inputs = Object.entries(roles).filter(([, r]) => r === 'input').map(([c]) => c)
-      promptLabel.textContent = isSheet ? 'How each row is shown to the model' : 'Your prompt (use {{name}} for a blank)'
-      prompt.placeholder = isSweep ? 'e.g. Evaluate this resume for the {{role}} position. Candidate: {{name}} from {{city}}.' : ''
-      prompt.readOnly = isSheet && state.promptAuto
+      promptLabel.textContent = isSheet ? 'How each row is shown to the model' : 'The prompt with its blanks (edit it on "Your data")'
+      prompt.placeholder = ''
+      if (isSweep && prompt.value !== state.prompt) prompt.value = state.prompt
+      prompt.readOnly = (isSheet && state.promptAuto) || isSweep
       prompt.classList.toggle('readonly', prompt.readOnly)
       if (isSheet) {
         generatedNote.textContent = state.promptAuto

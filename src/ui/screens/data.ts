@@ -4,14 +4,15 @@
 // every other column is kept and never sent. Nothing is required of the user
 // beyond checking the guesses.
 
-import { sweepCaseCount } from '../../core/cases'
+import { parseSweepValues, sweepCaseCount } from '../../core/cases'
 import { columnFacts } from '../../core/guess'
 import { columnsWithRole, isBlank } from '../../core/partition'
 import type { ColumnRole } from '../../core/types'
 import type { Flow } from '../../state'
 import type { Actions } from '../actions'
 import { h } from '../dom'
-import { SWEEP_MAX, SWEEP_WARN, currentPartition, currentRows, dataProblems, sweepVariables } from '../model'
+import { SWEEP_MAX, SWEEP_WARN, currentPartition, currentRows, dataProblems, sweepPlaceholders, sweepVariables } from '../model'
+import { renderPromptTemplate } from '../../core/template'
 import type { AppData, Store } from '../store'
 import type { Screen } from './screen'
 
@@ -204,30 +205,77 @@ export function buildDataScreen(store: Store, actions: Actions): Screen {
     into.replaceChildren(h('div', { class: 'row' }, h('span', { class: 'muted small' }, 'Examples are shown to the model in row order.'), reset), h('div', { class: 'sheet-table-wrap' }, table), pager)
   }
 
+  // --- variations: the prompt and its blanks on one screen -------------------------
+  const sweepPrompt = h('textarea', { class: 'input', rows: '6', placeholder: 'e.g. Evaluate this candidate for the {{role}} position. Name: {{name}}. Hometown: {{city}}.', 'data-field': 'sweep-prompt' })
+  sweepPrompt.value = store.state.prompt
+  let sweepCaret = sweepPrompt.value.length
+  sweepPrompt.addEventListener('input', () => { sweepCaret = sweepPrompt.selectionStart ?? sweepPrompt.value.length; store.update(d => { d.state.prompt = sweepPrompt.value }) })
+  for (const event of ['click', 'keyup', 'select'] as const) sweepPrompt.addEventListener(event, () => { sweepCaret = sweepPrompt.selectionStart ?? sweepPrompt.value.length })
+  const sweepVars = h('div', { class: 'sweep-list' })
+  const sweepFacts = h('p', { class: 'muted small' })
+  const sweepPreview = h('div', { class: 'preview-prompt' })
+  const addBlank = h('button', { class: 'btn', type: 'button' }, '+ Add a blank at the cursor')
+  addBlank.addEventListener('click', () => {
+    const used = new Set(sweepPlaceholders(store.state))
+    let n = 1
+    while (used.has(`blank${n}`)) n++
+    const marker = `{{blank${n}}}`
+    const start = Math.max(0, Math.min(sweepCaret, sweepPrompt.value.length))
+    sweepPrompt.value = `${sweepPrompt.value.slice(0, start)}${marker}${sweepPrompt.value.slice(start)}`
+    sweepCaret = start + marker.length
+    sweepPrompt.focus()
+    sweepPrompt.setSelectionRange(start + 2, start + 2 + `blank${n}`.length)
+    store.update(d => { d.state.prompt = sweepPrompt.value })
+  })
+  sweepBox.append(
+    h('p', { class: 'muted small' }, 'Write the prompt once. Wherever a value should vary, put a blank like {{name}}; each blank gets a list of values below, and every combination is asked of every model.'),
+    h('label', { class: 'field' }, h('span', {}, 'The prompt, with blanks'), sweepPrompt),
+    h('div', { class: 'row' }, addBlank, sweepFacts),
+    sweepVars,
+    sweepPreview,
+  )
+
+  let sweepKey = ''
   function renderSweep(data: AppData): void {
     if (data.state.flow !== 'sweep') return
-    const variables = data.state.sweep
-    const count = sweepCaseCount(sweepVariables(data.state))
-    const list = h('div', { class: 'sweep-list' })
-    variables.forEach((variable, index) => {
-      const name = h('input', { class: 'input', placeholder: 'name of the blank, e.g. name' })
-      name.value = variable.name
-      const values = h('textarea', { class: 'input', rows: '4', placeholder: 'one value per line' })
-      values.value = variable.values
-      const remove = h('button', { class: 'minibtn danger', type: 'button' }, '×')
-      name.addEventListener('change', () => store.update(d => { d.state.sweep[index]!.name = name.value }))
-      values.addEventListener('change', () => store.update(d => { d.state.sweep[index]!.values = values.value }))
-      remove.addEventListener('click', () => store.update(d => { d.state.sweep.splice(index, 1) }))
-      list.append(h('div', { class: 'sweep-var' }, h('div', { class: 'row' }, name, h('span', { class: 'muted small' }, variable.name.trim() ? `use {{${variable.name.trim()}}} in the prompt` : ''), remove), values))
-    })
-    const add = h('button', { class: 'btn', type: 'button' }, '+ Add a blank to vary')
-    add.addEventListener('click', () => store.update(d => { d.state.sweep.push({ name: '', values: '' }) }))
-    const facts = count > SWEEP_MAX
-      ? h('span', { class: 'preview-warn' }, `${count.toLocaleString()} combinations: above the ${SWEEP_MAX.toLocaleString()} limit`)
+    if (sweepPrompt.value !== data.state.prompt && document.activeElement !== sweepPrompt) sweepPrompt.value = data.state.prompt
+    const names = sweepPlaceholders(data.state)
+    const stored = new Map(data.state.sweep.map(v => [v.name.trim(), v.values]))
+    const variables = sweepVariables(data.state)
+    const count = sweepCaseCount(variables)
+    const key = JSON.stringify([names, data.state.sweep])
+    if (key !== sweepKey) {
+      sweepKey = key
+      sweepVars.replaceChildren(...names.map((name, i) => {
+        const values = h('textarea', { class: 'input', rows: '4', placeholder: 'one value per line' })
+        values.value = stored.get(name) ?? ''
+        values.addEventListener('change', () => store.update(d => {
+          const entry = d.state.sweep.find(v => v.name.trim() === name)
+          if (entry) entry.values = values.value
+          else d.state.sweep.push({ name, values: values.value })
+        }))
+        const n = parseSweepValues(values.value).length
+        return h('div', { class: `sweep-var colour-${i % 5}`, 'data-name': name },
+          h('div', { class: 'row' }, h('span', { class: 'sweep-name' }, `{{${name}}}`), h('span', { class: 'muted small' }, n ? `${n} value${n === 1 ? '' : 's'}` : 'needs values')),
+          values)
+      }))
+      const orphans = data.state.sweep.filter(v => v.name.trim() && !names.includes(v.name.trim()))
+      if (orphans.length) {
+        sweepVars.append(h('p', { class: 'muted small' }, `Values kept for blanks no longer in the prompt: ${orphans.map(v => `{{${v.name.trim()}}}`).join(', ')}. Put the blank back to use them.`))
+      }
+    }
+    sweepFacts.textContent = names.length === 0 ? '' : count > SWEEP_MAX
+      ? `${count.toLocaleString()} combinations: above the ${SWEEP_MAX.toLocaleString()} limit`
       : count > SWEEP_WARN
-        ? h('span', { class: 'preview-warn' }, `${count.toLocaleString()} combinations: each is one call per model per repeat`)
-        : h('span', { class: 'muted small' }, count ? `${count.toLocaleString()} combination${count === 1 ? '' : 's'}` : '')
-    sweepBox.replaceChildren(list, h('div', { class: 'row' }, add, facts))
+        ? `${count.toLocaleString()} combinations: each is one call per model per repeat`
+        : count ? `${count.toLocaleString()} combination${count === 1 ? '' : 's'} (${variables.map(v => `${v.values.length} ${v.name}`).join(' × ')})` : ''
+    sweepFacts.classList.toggle('preview-warn', count > SWEEP_WARN)
+    const { rows } = currentRows(data)
+    sweepPreview.replaceChildren()
+    if (rows.length) {
+      sweepPreview.append(h('p', { class: 'preview-user' }, h('span', { class: 'preview-label' }, `First of ${count.toLocaleString()}: `), document.createTextNode(renderPromptTemplate(data.state.prompt, rows[0]!))))
+      if (rows.length > 1) sweepPreview.append(h('p', { class: 'preview-user' }, h('span', { class: 'preview-label' }, 'Last: '), document.createTextNode(renderPromptTemplate(data.state.prompt, rows[rows.length - 1]!))))
+    }
   }
 
   function refresh(data: AppData): void {

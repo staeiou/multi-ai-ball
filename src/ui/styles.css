@@ -1156,3 +1156,18 @@ textarea.readonly { background: var(--bg); color: var(--muted); }
 .final-table.virtual tbody tr.result-row td { height: 40px; max-height: 40px; padding-top: 0; padding-bottom: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .final-table.virtual .result-long { max-width: 420px; }
 .table-facts { margin: 6px 0 0; }
+
+/* --- results card fills the step so the table wrap is the only scroller; the
+   sticky header then sticks to something. --- */
+.results-stage { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.results-stage .final-table-wrap { flex: 1; min-height: 240px; max-height: none; overflow: auto; }
+.final-table thead th { position: sticky; top: 0; z-index: 2; background: var(--card); box-shadow: inset 0 -1px 0 var(--border-strong); }
+/* --- variations editor --- */
+.sweep-name { font-family: var(--mono); font-weight: 700; padding: 1px 6px; border-radius: 4px; }
+.sweep-var.colour-0 .sweep-name { background: #e8effc; color: #1d4ed8; }
+.sweep-var.colour-1 .sweep-name { background: #e6f7ee; color: #15803d; }
+.sweep-var.colour-2 .sweep-name { background: #fdf1e6; color: #b45309; }
+.sweep-var.colour-3 .sweep-name { background: #f3e8ff; color: #7e22ce; }
+.sweep-var.colour-4 .sweep-name { background: #fde8ec; color: #be123c; }
+html[data-theme='dark'] .sweep-var .sweep-name { filter: brightness(0.85) saturate(1.2); }
+.sweep-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
