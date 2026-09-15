@@ -17,7 +17,7 @@ import { buildReviewScreen } from './screens/review'
 import { buildSettingsScreen } from './screens/settings'
 import type { Screen } from './screens/screen'
 import { Store } from './store'
-import { Wizard } from './wizard'
+import { Wizard, stepFromHash } from './wizard'
 import { countTokens } from '../core/tokenizer'
 
 const store = new Store()
@@ -81,6 +81,24 @@ function init(): void {
   screens[0]!.refresh({ state: store.state, session: store.session })
   // Start the tokenizer worker now so the first real count is fast.
   void countTokens('warm up')
+  // A refresh comes back to where it was: the sheet, the model list and the
+  // run are brought back from the browser's own storage, then the step in the
+  // URL is re-entered as far as the gates allow.
+  const wanted = stepFromHash(location.hash)
+  void actions.restoreSession().then(() => {
+    for (const s of screens) s.restore?.({ state: store.state, session: store.session })
+    // Only navigate if the user has not already moved on while we restored.
+    if ((wizard?.step() ?? 0) !== 0 || wanted === 0) return
+    if (wanted === screens.length - 1 && store.session.frozen) wizard?.goTo(wanted)
+    else wizard?.goTowards(wanted)
+  })
+  window.addEventListener('hashchange', () => {
+    const step = stepFromHash(location.hash)
+    if (step !== wizard?.step()) {
+      if (step === screens.length - 1 && store.session.frozen) wizard?.goTo(step)
+      else wizard?.goTowards(step)
+    }
+  })
 }
 
 init()

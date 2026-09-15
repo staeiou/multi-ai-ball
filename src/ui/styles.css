@@ -1149,3 +1149,10 @@ textarea.readonly { background: var(--bg); color: var(--muted); }
 .progress-ok { background: var(--ok); transition: width 0.2s; }
 .progress-err { background: var(--err); transition: width 0.2s; }
 .progress-running { background: var(--primary); opacity: 0.6; transition: width 0.2s; }
+
+/* --- results: full scroll, windowed above 1000 rows --- */
+.final-table-wrap { max-height: min(70vh, 900px); }
+.final-table.virtual { table-layout: fixed; }
+.final-table.virtual tbody tr.result-row td { height: 40px; max-height: 40px; padding-top: 0; padding-bottom: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.final-table.virtual .result-long { max-width: 420px; }
+.table-facts { margin: 6px 0 0; }

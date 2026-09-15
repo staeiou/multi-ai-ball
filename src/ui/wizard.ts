@@ -6,6 +6,13 @@
 import { h } from './dom'
 
 export const WIZARD_STEPS = ['Your data', 'Instructions', 'Answer format', 'Models', 'Settings', 'Check & run', 'Results'] as const
+export const STEP_SLUGS = ['data', 'instructions', 'format', 'models', 'settings', 'check', 'results'] as const
+
+export function stepFromHash(hash: string): number {
+  const slug = hash.replace(/^#\/?/, '')
+  const index = (STEP_SLUGS as readonly string[]).indexOf(slug)
+  return index >= 0 ? index : 0
+}
 
 export type Gate = (step: number) => { ok: boolean; why: string; canRun: boolean }
 
@@ -45,8 +52,17 @@ export class Wizard {
     // then block.
     if (step > this.current && !this.host.gate(this.current).ok) return
     this.current = Math.max(0, Math.min(WIZARD_STEPS.length - 1, step))
+    if (typeof location !== 'undefined') history.replaceState(null, '', `#/${STEP_SLUGS[this.current]}`)
     this.render()
     this.host.onStep?.(this.current)
+  }
+
+  /** Walk forward towards `target` while each step's gate allows it; stop at
+   * the first that does not. Used to come back to where a refresh left off. */
+  goTowards(target: number): void {
+    let step = 0
+    while (step < target && this.host.gate(step).ok) step++
+    this.goTo(step)
   }
 
   /** Re-evaluate chips/buttons after any state change (idempotent). */

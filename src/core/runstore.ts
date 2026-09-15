@@ -9,9 +9,10 @@
 import type { CallRow, FrozenRun } from './types'
 
 const DB_NAME = 'multiaiball'
-const DB_VERSION = 1
+const DB_VERSION = 2
 const RUNS = 'runs'
 const ROWS = 'rows'
+const SHEETS = 'sheets'
 
 export interface StoredRun {
   id: string
@@ -36,6 +37,7 @@ function open(): Promise<IDBDatabase | null> {
         const db = request.result
         if (!db.objectStoreNames.contains(RUNS)) db.createObjectStore(RUNS, { keyPath: 'id' })
         if (!db.objectStoreNames.contains(ROWS)) db.createObjectStore(ROWS, { keyPath: ['runId', 'index'] })
+        if (!db.objectStoreNames.contains(SHEETS)) db.createObjectStore(SHEETS, { keyPath: 'key' })
       }
       request.onsuccess = () => resolve(request.result)
       request.onerror = () => resolve(null)
@@ -110,4 +112,35 @@ export async function deleteRun(id: string): Promise<void> {
 
 export function newRunId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+// --- the loaded sheet, so a refresh does not lose it -----------------------------
+
+export interface StoredSheet {
+  key: 'current'
+  name: string
+  columns: string[]
+  rows: Record<string, unknown>[]
+  source: { name: string; bytes: number; sha256: string }
+}
+
+export async function saveCurrentSheet(sheet: Omit<StoredSheet, 'key'>): Promise<void> {
+  const db = await open()
+  if (!db) return
+  try { await req(db.transaction(SHEETS, 'readwrite').objectStore(SHEETS).put({ key: 'current', ...sheet })) } catch { /* best effort */ }
+}
+
+export async function loadCurrentSheet(): Promise<StoredSheet | null> {
+  const db = await open()
+  if (!db) return null
+  try {
+    const sheet = await req(db.transaction(SHEETS).objectStore(SHEETS).get('current')) as StoredSheet | undefined
+    return sheet && Array.isArray(sheet.rows) && Array.isArray(sheet.columns) ? sheet : null
+  } catch { return null }
+}
+
+export async function clearCurrentSheet(): Promise<void> {
+  const db = await open()
+  if (!db) return
+  try { await req(db.transaction(SHEETS, 'readwrite').objectStore(SHEETS).delete('current')) } catch { /* best effort */ }
 }

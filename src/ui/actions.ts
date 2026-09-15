@@ -13,7 +13,7 @@ import { presetById } from '../core/providers/presets'
 import { buildBundleZip, ZIP_MIME } from '../core/py'
 import { sha256Hex } from '../core/render'
 import { RunController, pendingRows } from '../core/run'
-import { appendRow, deleteRun, listRuns, loadRun, newRunId, saveRun } from '../core/runstore'
+import { appendRow, deleteRun, listRuns, loadCurrentSheet, loadRun, newRunId, saveCurrentSheet, saveRun } from '../core/runstore'
 import { countTokens } from '../core/tokenizer'
 import type { CallRow, FrozenRun } from '../core/types'
 import { pushRecent, saveKey } from '../state'
@@ -99,6 +99,7 @@ export class Actions {
         d.state.contractAuto = true
         applyGuesses(d)
       })
+      void saveCurrentSheet({ name: parsed.name, columns: parsed.columns, rows: parsed.rows, source: { name: file.name, bytes: parsed.bytes, sha256: parsed.sha256 } })
     } catch (error) {
       this.store.update(d => { d.session.loadingSheet = false; d.session.sheetError = `Could not read the file: ${(error as Error).message}` })
     }
@@ -162,6 +163,7 @@ export class Actions {
     const isSheet = this.store.state.flow === 'sheet'
     this.store.update(d => {
       d.session.runId = runId
+      d.state.lastRunId = runId
       d.session.frozen = frozen
       d.session.rows = pendingRows(frozen)
       d.session.sourceRows = isSheet ? sourceRows : null
@@ -232,6 +234,44 @@ export class Actions {
     await this.execute(frozen, runId, indices)
   }
 
+  // --- boot: bring back what the browser already has ------------------------------
+
+  /** After a refresh: the loaded sheet, the model list (when a key is at hand), and
+   * the run that was on screen. Returns the furthest step that makes sense to show. */
+  async restoreSession(): Promise<void> {
+    const sheet = await loadCurrentSheet()
+    if (sheet && this.store.state.flow === 'sheet') {
+      this.store.update(d => {
+        d.session.sheet = { name: sheet.name, columns: sheet.columns, rows: sheet.rows }
+        d.session.sheetSource = sheet.source
+        applyGuesses(d)
+      })
+    }
+    // Reload the model list only when a run could follow: a key is at hand, or
+    // it is a custom endpoint with a base URL. (Keyless public catalogs are not
+    // fetched unasked.)
+    const preset = presetById(this.store.state.providerId)
+    if (this.store.session.apiKey || (preset.id === 'custom' && this.store.state.customBase.trim())) await this.loadCatalog()
+    const lastRunId = this.store.state.lastRunId
+    if (lastRunId) {
+      const stored = await loadRun(lastRunId)
+      if (stored) {
+        const frozen = stored.run.frozen
+        const rows = pendingRows(frozen)
+        for (const [index, row] of stored.rows) if (index < rows.length) rows[index] = row
+        this.store.update(d => {
+          d.session.runId = lastRunId
+          d.session.frozen = frozen
+          d.session.rows = rows
+          d.session.sourceRows = stored.run.sourceRows ?? null
+          d.session.sourceColumns = stored.run.sourceColumns ?? null
+          const done = rows.filter(r => r.status !== 'pending').length
+          d.session.statusLine = done === rows.length ? 'Reopened after a reload' : `Reopened after a reload: ${done}/${rows.length} calls completed`
+        })
+      } else this.store.update(d => { d.state.lastRunId = null })
+    }
+  }
+
   // --- stored runs -----------------------------------------------------------------
 
   listRuns = listRuns
@@ -245,6 +285,7 @@ export class Actions {
     const done = rows.filter(r => r.status !== 'pending').length
     this.store.update(d => {
       d.session.runId = id
+      d.state.lastRunId = id
       d.session.frozen = frozen
       d.session.rows = rows
       d.session.sourceRows = stored.run.sourceRows ?? null
@@ -256,8 +297,7 @@ export class Actions {
 
   async deleteStoredRun(id: string): Promise<void> {
     await deleteRun(id)
-    if (this.store.session.runId === id) this.store.update(d => { d.session.runId = null })
-    else this.store.update(() => {})
+    this.store.update(d => { if (d.session.runId === id) d.session.runId = null; if (d.state.lastRunId === id) d.state.lastRunId = null })
   }
 
   // --- exports -------------------------------------------------------------------------

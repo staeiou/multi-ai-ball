@@ -49,6 +49,8 @@ export interface PersistedState {
   parserId: string | null
   dark: boolean
   keyRemember: boolean
+  /** The run shown on the results screen, reopened after a refresh. */
+  lastRunId: string | null
 }
 
 export function defaultShared(): SharedParams {
@@ -80,6 +82,7 @@ export function defaultState(): PersistedState {
     parserId: 'json-unstack',
     dark: false,
     keyRemember: false,
+    lastRunId: null,
   }
 }
 

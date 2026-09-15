@@ -131,3 +131,13 @@ C. A guided one-question-per-screen wizard of ten steps. Most hand-holding; also
 **Option not taken.** Estimating remaining time from each model's average latency and the concurrency setting. The completion-rate projection is one division, already accounts for concurrency and retries, and is what a user watching a progress bar expects; per-model latency modelling can come if the simple one misleads.
 
 **Verified.** `tsc` clean; vitest 116; Playwright 18, with the slow-model test asserting "1 in flight", "3 waiting", the expected-total line and the elapsed clock during the run, and "4 of 4 done" plus "spent so far" after the rerun.
+
+## 2026-09-15 (i): full scroll with windowing above 1,000 rows; refresh-safe navigation
+
+**Where.** `screens/results.ts` (pagination removed; every row is drawn under 1,000 visible rows; above that the tbody holds a spacer row, the rows in view plus twenty either side, and a spacer row, on a fixed 40 px row height with one-line cells; the detail dialog carries the full content), `ui/wizard.ts` (the step is the URL hash, `#/data` … `#/results`; `goTowards` re-enters a step as far as the gates allow), `ui/app.ts` (boot restore, then navigate only if the user has not already moved), `ui/actions.ts` (`restoreSession`: the loaded sheet from IndexedDB, the model list when a key or a custom base URL is at hand, the last run with its rows), `core/runstore.ts` (a `sheets` store, DB version 2), `state.ts` (`lastRunId`).
+
+**Options.** A virtual-list dependency vs a hand-rolled window. The window is fifty lines around two spacer rows; a dependency would bring its own row model and event handling for a table whose rows are already one line each. Hand-rolled, for once, because the thing being rolled is smaller than the dependency's integration.
+
+**A defect the suite caught.** The first version navigated to the hash step after the asynchronous restore finished, which sent a user who had already clicked Next back to the first screen (nine e2e failures). Now the restore only navigates if the wizard is still on the first step.
+
+**Verified.** `tsc` clean; vitest 116; Playwright 20: a 10×10×11 sweep of 1,100 calls against the stub completes, the table is windowed (fewer than 200 rows in the DOM), scrolling to the end shows the last case; a refresh on the instructions step comes back to it with the sheet and the regenerated template, a refresh on the results screen comes back with the run and its rows and says so.

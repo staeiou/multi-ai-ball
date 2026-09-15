@@ -12,7 +12,11 @@ import { h } from '../dom'
 import type { AppData, Store } from '../store'
 import type { Screen } from './screen'
 
-const PAGE = 50
+/** Above this many visible rows the table windows itself: only the rows in
+ * view (plus a margin) exist in the DOM, on a fixed row height. */
+const VIRTUAL_ABOVE = 1000
+const ROW_HEIGHT = 40
+const OVERSCAN = 20
 
 export function buildResultsScreen(store: Store, actions: Actions): Screen {
   const status = h('span', { class: 'muted small status-line' })
@@ -35,7 +39,6 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
   const statusFilter = h('select', { class: 'input result-status' }, h('option', { value: 'all' }, 'All'), h('option', { value: 'ok' }, 'Succeeded'), h('option', { value: 'error' }, 'Failed'), h('option', { value: 'running' }, 'In flight'), h('option', { value: 'pending' }, 'Waiting'), h('option', { value: 'parse-failed' }, 'Could not parse'))
   const modelFilter = h('select', { class: 'input result-model' })
   const tableWrap = h('div', { class: 'final-table-wrap' })
-  const pager = h('div', { class: 'row pager' })
   const saved = h('div', { class: 'saved-runs' })
 
   const el = h('section', { class: 'card stage-card' },
@@ -46,11 +49,9 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
     h('div', { class: 'results-toolbar' }, exportXlsx, exportCsv, exportJsonl, exportCompleted, exportPy, saveRun, openRun, openRunInput),
     h('div', { class: 'result-filters' }, search, statusFilter, modelFilter),
     tableWrap,
-    pager,
     h('details', { class: 'schema-preview saved-runs-box' }, h('summary', {}, 'Saved runs on this device'), saved),
   )
 
-  let page = 0
   setInterval(() => { if (store.session.running) renderTally(current()) }, 1000)
   pause.addEventListener('click', () => actions.pause())
   resume.addEventListener('click', () => actions.resume())
@@ -64,9 +65,10 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
   saveRun.addEventListener('click', () => void actions.saveRunFile())
   openRun.addEventListener('click', () => openRunInput.click())
   openRunInput.addEventListener('change', () => { const f = openRunInput.files?.[0]; if (f) void actions.openRunFile(f); openRunInput.value = '' })
-  search.addEventListener('input', () => { page = 0; renderTable(current()) })
-  statusFilter.addEventListener('change', () => { page = 0; renderTable(current()) })
-  modelFilter.addEventListener('change', () => { page = 0; renderTable(current()) })
+  search.addEventListener('input', () => renderTable(current()))
+  statusFilter.addEventListener('change', () => renderTable(current()))
+  modelFilter.addEventListener('change', () => renderTable(current()))
+  tableWrap.addEventListener('scroll', () => { if (virtual) scheduleWindow() })
   el.querySelector('.saved-runs-box')!.addEventListener('toggle', ev => { if ((ev.target as HTMLDetailsElement).open) void renderSaved() })
 
   function current(): AppData { return { state: store.state, session: store.session } }
@@ -86,15 +88,26 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
     return v === undefined || v === null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v)
   }
 
+  interface Visible { row: CallRow; index: number }
+  let virtual = false
+  let visibleRows: Visible[] = []
+  let visibleFrozen: FrozenRun | null = null
+  let visibleColumns: string[] = []
+  let tbody: HTMLTableSectionElement | null = null
+  let windowStart = -1
+  let windowScheduled = false
+
   function renderTable(data: AppData): void {
     const { frozen, rows } = data.session
+    const scrollTop = tableWrap.scrollTop
     tableWrap.replaceChildren()
-    pager.replaceChildren()
+    tbody = null
     if (!frozen) { tableWrap.append(h('p', { class: 'muted' }, 'Run something to see results here, or open a saved run below.')); return }
     const q = search.value.trim().toLowerCase()
     const sf = statusFilter.value
     const mf = modelFilter.value
-    const visible = rows.map((row, index) => ({ row, index })).filter(({ row }) => {
+    visibleFrozen = frozen
+    visibleRows = rows.map((row, index) => ({ row, index })).filter(({ row }) => {
       const model = frozen.models[row.coord.modelIndex]!
       if (mf && model.id !== mf) return false
       if (sf === 'parse-failed' ? row.parseStatus !== 'failed' : sf !== 'all' && row.status !== sf) return false
@@ -102,42 +115,59 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
       const c = frozen.cases[row.coord.caseIndex]!
       return `${c.label} ${model.id} ${responseText(row)} ${row.error ?? ''} ${JSON.stringify(row.parsed ?? '')}`.toLowerCase().includes(q)
     })
-    const columns = parsedColumns(frozen, rows)
+    visibleColumns = parsedColumns(frozen, rows)
+    virtual = visibleRows.length > VIRTUAL_ABOVE
     const multi = frozen.models.length > 1
-    const table = h('table', { class: 'grid-table final-table' })
+    const table = h('table', { class: `grid-table final-table ${virtual ? 'virtual' : ''}` })
     table.append(h('thead', {}, h('tr', {}, h('th', {}, 'Case'), multi ? h('th', {}, 'Model') : null, frozen.repeats > 1 ? h('th', {}, 'Rep') : null, h('th', { class: 'center' }, 'Status'),
-      ...columns.map(c => h('th', {}, c)), h('th', {}, 'Response'), h('th', { class: 'center' }, 'Cost'))))
-    const body = h('tbody')
-    const start = page * PAGE
-    for (const { row, index } of visible.slice(start, start + PAGE)) {
-      const c = frozen.cases[row.coord.caseIndex]!
-      const model = frozen.models[row.coord.modelIndex]!
-      const text = row.status === 'error' ? (row.error ?? 'error') : responseText(row)
-      const tr = h('tr', { class: 'result-row' },
-        h('td', { class: 'mono' }, c.label),
-        multi ? h('td', { class: 'mono' }, model.id) : null,
-        frozen.repeats > 1 ? h('td', { class: 'center' }, String(row.coord.repeat + 1)) : null,
-        h('td', { class: 'center' }, h('span', { class: `status ${row.status}${row.parseStatus === 'failed' ? ' parse-failed' : ''}` }, row.status === 'running' && row.error ? row.error.slice(0, 24) : row.status === 'running' ? 'in flight' : row.status === 'pending' ? 'waiting' : row.status === 'ok' && row.parseStatus === 'failed' ? 'ok, unparsed' : row.status)),
-        ...columns.map(k => h('td', { class: 'parsed-cell' }, cell(row, k).slice(0, 80))),
-        h('td', { class: `result-long ${row.status === 'error' ? 'err-text' : ''}` }, text.length > 240 ? `${text.slice(0, 240)}…` : text),
-        h('td', { class: 'center' }, formatUsd(row.costUsd ?? row.estimatedCostUsd)),
-      )
-      tr.addEventListener('click', () => openDetail(frozen, row, index))
-      body.append(tr)
-    }
-    table.append(body)
+      ...visibleColumns.map(c => h('th', {}, c)), h('th', {}, 'Response'), h('th', { class: 'center' }, 'Cost'))))
+    tbody = h('tbody')
+    table.append(tbody)
     tableWrap.append(table)
-    if (visible.length > PAGE) {
-      const prev = h('button', { class: 'minibtn', type: 'button' }, '← previous')
-      const next = h('button', { class: 'minibtn', type: 'button' }, 'next →')
-      prev.disabled = page === 0
-      next.disabled = start + PAGE >= visible.length
-      prev.addEventListener('click', () => { page--; renderTable(current()) })
-      next.addEventListener('click', () => { page++; renderTable(current()) })
-      pager.append(prev, h('span', { class: 'muted small' }, `${start + 1}–${Math.min(visible.length, start + PAGE)} of ${visible.length}`), next)
-    } else if (visible.length !== rows.length) {
-      pager.append(h('span', { class: 'muted small' }, `${visible.length} of ${rows.length} calls`))
-    }
+    if (visibleRows.length !== rows.length) tableWrap.append(h('p', { class: 'muted small table-facts' }, `${visibleRows.length.toLocaleString()} of ${rows.length.toLocaleString()} calls match`))
+    windowStart = -1
+    if (virtual) { tableWrap.scrollTop = scrollTop; renderWindow() }
+    else for (const v of visibleRows) tbody.append(rowElement(frozen, v))
+  }
+
+  function scheduleWindow(): void {
+    if (windowScheduled) return
+    windowScheduled = true
+    requestAnimationFrame(() => { windowScheduled = false; renderWindow() })
+  }
+
+  /** Windowed body: a spacer row above, the rows in view plus a margin, a
+   * spacer row below. The spacers give the scrollbar its true length. */
+  function renderWindow(): void {
+    if (!tbody || !visibleFrozen) return
+    const total = visibleRows.length
+    const viewport = tableWrap.clientHeight || 600
+    const first = Math.max(0, Math.floor(tableWrap.scrollTop / ROW_HEIGHT) - OVERSCAN)
+    if (first === windowStart) return
+    windowStart = first
+    const last = Math.min(total, first + Math.ceil(viewport / ROW_HEIGHT) + OVERSCAN * 2)
+    const columnCount = tbody.parentElement!.querySelectorAll('thead th').length
+    const spacer = (height: number): HTMLElement => { const tr = h('tr', { class: 'spacer' }); const td = h('td', { colspan: String(columnCount) }); td.style.height = `${height}px`; td.style.padding = '0'; td.style.border = '0'; tr.append(td); return tr }
+    const frozen = visibleFrozen
+    tbody.replaceChildren(spacer(first * ROW_HEIGHT), ...visibleRows.slice(first, last).map(v => rowElement(frozen, v)), spacer(Math.max(0, total - last) * ROW_HEIGHT))
+  }
+
+  function rowElement(frozen: FrozenRun, { row, index }: Visible): HTMLTableRowElement {
+    const multi = frozen.models.length > 1
+    const c = frozen.cases[row.coord.caseIndex]!
+    const model = frozen.models[row.coord.modelIndex]!
+    const text = row.status === 'error' ? (row.error ?? 'error') : responseText(row)
+    const tr = h('tr', { class: 'result-row' },
+      h('td', { class: 'mono' }, c.label),
+      multi ? h('td', { class: 'mono' }, model.id) : null,
+      frozen.repeats > 1 ? h('td', { class: 'center' }, String(row.coord.repeat + 1)) : null,
+      h('td', { class: 'center' }, h('span', { class: `status ${row.status}${row.parseStatus === 'failed' ? ' parse-failed' : ''}` }, row.status === 'running' && row.error ? row.error.slice(0, 24) : row.status === 'running' ? 'in flight' : row.status === 'pending' ? 'waiting' : row.status === 'ok' && row.parseStatus === 'failed' ? 'ok, unparsed' : row.status)),
+      ...visibleColumns.map(k => h('td', { class: 'parsed-cell' }, cell(row, k).slice(0, 80))),
+      h('td', { class: `result-long ${row.status === 'error' ? 'err-text' : ''}` }, text.length > 240 ? `${text.slice(0, 240)}…` : text),
+      h('td', { class: 'center' }, formatUsd(row.costUsd ?? row.estimatedCostUsd)),
+    )
+    tr.addEventListener('click', () => openDetail(frozen, row, index))
+    return tr
   }
 
   function openDetail(frozen: FrozenRun, row: CallRow, index: number): void {
