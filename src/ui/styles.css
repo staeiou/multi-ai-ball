@@ -1124,3 +1124,17 @@ textarea.input {
 .template-row { margin-top: 14px; }
 textarea.mono { font-family: var(--mono); font-size: 12.5px; }
 .result-model { max-width: 320px; }
+
+/* --- 2026-09-15 newbie overhaul --- */
+.data-preview { margin: 8px 0; }
+.question-box { margin: 14px 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+.question-box h3 { margin: 0 0 4px; font-size: 15px; }
+.column-checklist { display: grid; gap: 4px; margin-top: 8px; }
+.column-choice { display: flex; gap: 8px; align-items: baseline; padding: 4px 6px; border-radius: 6px; cursor: pointer; }
+.column-choice:hover { background: var(--primary-soft); }
+.column-choice .column-name { font-family: var(--mono); font-weight: 600; }
+.new-column { max-width: 260px; }
+textarea.readonly { background: var(--bg); color: var(--muted); }
+.more-options { margin-top: 10px; }
+.type-help { margin: 0 0 6px; }
+.stage-heading p { max-width: 820px; }

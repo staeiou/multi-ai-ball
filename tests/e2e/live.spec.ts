@@ -32,19 +32,19 @@ for (const live of LIVE_CASES) {
   describe(`live: ${live.preset}`, () => {
     test(`runs ${live.model} with temperature set, omitted per guidance`, async ({ page }) => {
       await page.goto('/')
+      await page.click('button.wizard-next') // one question: nothing to set up
       await page.fill('textarea[data-field="prompt"]', 'What is the capital of France? Answer in one word.')
-      await page.click('button.wizard-next')
-      await page.click('button.wizard-next')
+      await page.click('button.wizard-next') // answer format: plain text
+      await page.click('button.wizard-next') // models
       await page.selectOption('.provider-band select', live.preset)
       await page.fill('input[placeholder*="API key"]', key!)
       await page.click('text=Load models')
       await expect(page.locator('.pick-col .model-row').first()).toBeVisible({ timeout: 30_000 })
       await page.fill('input[placeholder*="Filter the loaded"]', live.model)
       await page.click(`.pick-col .model-row:has(.model-id:text-is("${live.model}"))`)
-      await page.click('button.wizard-next')
-      await page.fill('[data-field="temperature"]', '0.3')
-      await page.locator('[data-field="temperature"]').press('Tab')
-      await page.click('button.wizard-next')
+      await page.click('button.wizard-next') // settings
+      await page.selectOption('[data-field="temperatureWords"]', 'focused')
+      await page.click('button.wizard-next') // check
       const report = page.locator('.review-model')
       await expect(report).toHaveCount(1, { timeout: 15_000 })
       await report.locator('summary').click()

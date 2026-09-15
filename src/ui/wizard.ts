@@ -5,7 +5,7 @@
 
 import { h } from './dom'
 
-export const WIZARD_STEPS = ['Prompt & data', 'Output format', 'Provider & models', 'Run settings', 'Review & run', 'Results'] as const
+export const WIZARD_STEPS = ['Your data', 'Instructions', 'Answer format', 'Models', 'Settings', 'Check & run', 'Results'] as const
 
 export type Gate = (step: number) => { ok: boolean; why: string; canRun: boolean }
 
@@ -52,7 +52,7 @@ export class Wizard {
   /** Re-evaluate chips/buttons after any state change (idempotent). */
   refresh(): void {
     const gate = this.host.gate(this.current)
-    const last = this.current >= 4
+    const last = this.current >= WIZARD_STEPS.length - 2
     this.host.next.disabled = last || !gate.ok
     this.host.next.hidden = last
     this.host.next.title = gate.ok ? '' : gate.why

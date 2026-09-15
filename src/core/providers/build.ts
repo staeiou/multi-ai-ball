@@ -97,18 +97,25 @@ export function buildFrozenModel(input: BuildInput): FrozenModel {
     report.push({ param: 'temperature', sent: false, reason: 'nothing known about this model; not sent', source: g.temperature.source })
   }
 
-  // Reasoning effort: sent only where the model lists the chosen value.
+  // Reasoning effort. The shared control is relative ("less" / "more") and is
+  // mapped to each model's own list (lowest / highest); an exact level is sent
+  // where the model lists it. Default sends nothing.
+  const efforts = g.effortValues.value
   if (shared.effort === null) {
-    report.push({ param: 'effort', sent: false, reason: 'not set', source: g.effortValues.source })
+    report.push({ param: 'effort', sent: false, reason: 'not set; the model decides how long to think', source: g.effortValues.source })
   } else if (!preset.effortPath) {
     report.push({ param: 'effort', sent: false, reason: 'this endpoint has no effort control', source: 'assumed' })
-  } else if (g.effortValues.value && g.effortValues.value.includes(shared.effort)) {
-    setPath(body, preset.effortPath, shared.effort)
-    report.push({ param: preset.effortPath.join('.'), sent: true, value: shared.effort, reason: 'listed among the model\'s effort values', source: g.effortValues.source })
-  } else if (g.effortValues.value) {
-    report.push({ param: preset.effortPath.join('.'), sent: false, reason: `model lists ${g.effortValues.value.join('/')}, not ${shared.effort}`, source: g.effortValues.source })
+  } else if (!efforts || efforts.length === 0) {
+    report.push({ param: preset.effortPath.join('.'), sent: false, reason: 'this model is not reported to have a thinking-effort control', source: g.effortValues.source })
   } else {
-    report.push({ param: preset.effortPath.join('.'), sent: false, reason: 'model not reported to take an effort control', source: g.effortValues.source })
+    const level = shared.effort === 'less' ? efforts[0]! : shared.effort === 'more' ? efforts[efforts.length - 1]! : efforts.includes(shared.effort) ? shared.effort : null
+    if (level === null) {
+      report.push({ param: preset.effortPath.join('.'), sent: false, reason: `model lists ${efforts.join('/')}, not ${shared.effort}`, source: g.effortValues.source })
+    } else {
+      setPath(body, preset.effortPath, level)
+      const why = shared.effort === 'less' ? `"less thinking" = this model's lowest level (${efforts.join('/')})` : shared.effort === 'more' ? `"more thinking" = this model's highest level (${efforts.join('/')})` : 'listed among the model\'s effort values'
+      report.push({ param: preset.effortPath.join('.'), sent: true, value: level, reason: why, source: g.effortValues.source })
+    }
   }
 
   // Response format: the one control that stands in for a parameter whose

@@ -169,7 +169,8 @@ export function buildCompletedDatasets(
   const datasets: CompletedDataset[] = []
   run.models.forEach((model, modelIndex) => {
     for (let repeat = 0; repeat < run.repeats; repeat++) {
-      const columns = [...sourceColumns, ...extraColumns, '_row_role', '_status', '_model']
+      const newOutputs = outputColumns.filter(c => !sourceColumns.includes(c))
+      const columns = [...sourceColumns, ...newOutputs, ...extraColumns, '_row_role', '_status', '_model']
       const out: ExportRow[] = sourceRows.map((source, ordinal) => {
         const record: ExportRow = {}
         for (const column of sourceColumns) record[column] = scalarCell(source[column])

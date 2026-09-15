@@ -18,10 +18,10 @@ import type { Screen } from './screen'
 export function buildReviewScreen(_store: Store, actions: Actions): Screen {
   const summary = h('div', { class: 'review-summary' })
   const models = h('div', { class: 'review-models' })
-  const run = h('button', { class: 'btn primary run-button review-run', type: 'button' }, 'Run')
+  const run = h('button', { class: 'btn primary run-button review-run', type: 'button' }, 'Run it')
   const why = h('span', { class: 'muted small' })
   const el = h('section', { class: 'card stage-card review-stage' },
-    h('div', { class: 'stage-heading' }, h('h2', {}, 'Review & run'), h('p', {}, 'Nothing has been sent yet. This is exactly what will be.')),
+    h('div', { class: 'stage-heading' }, h('h2', {}, 'Check & run'), h('p', {}, 'Nothing has been sent yet. Below is exactly what will be, so you can check before spending anything.')),
     summary,
     models,
     h('div', { class: 'review-action' }, run, why),
@@ -35,7 +35,7 @@ export function buildReviewScreen(_store: Store, actions: Actions): Screen {
     const gate = canRun(data)
     run.disabled = !gate.ok || data.session.running
     why.textContent = gate.ok ? '' : gate.why
-    if (!gate.ok) { summary.replaceChildren(h('p', { class: 'muted' }, 'Finish the earlier steps to see the run.')); models.replaceChildren(); return }
+    if (!gate.ok) { summary.replaceChildren(h('p', { class: 'muted' }, 'Finish the earlier steps first: ' + gate.why)); models.replaceChildren(); return }
     if (freezing) return
     freezing = true
     try {
@@ -79,7 +79,7 @@ export function buildReviewScreen(_store: Store, actions: Actions): Screen {
         h('summary', {}, h('strong', {}, m.id), h('span', { class: 'muted small' }, ` · ${presetById(m.provider).label} · `),
           fit === null ? h('span', { class: 'muted small' }, 'context limit unknown') : fit ? h('span', { class: 'ok-text' }, `fits its ${g.contextLimit.value!.toLocaleString()}-token context`) : h('span', { class: 'preview-warn' }, `may exceed its ${g.contextLimit.value!.toLocaleString()}-token context`)),
         table,
-        h('p', { class: 'muted small' }, `First call to ${m.url}:`),
+        h('p', { class: 'muted small' }, `The first call, exactly as it will be sent to ${m.url} (the payload):`),
         h('pre', { class: 'payload-code' }, JSON.stringify(first.body, null, 2)),
       )
     }))

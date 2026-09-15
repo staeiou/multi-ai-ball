@@ -7,10 +7,11 @@ import './styles.css'
 
 import { Actions } from './actions'
 import { h } from './dom'
-import { stageGate } from './model'
+import { STEP, stageGate } from './model'
 import { buildModelsScreen } from './screens/models'
 import { buildOutputScreen } from './screens/output'
-import { buildPromptScreen } from './screens/prompt'
+import { buildDataScreen } from './screens/data'
+import { buildInstructionsScreen } from './screens/instructions'
 import { buildResultsScreen } from './screens/results'
 import { buildReviewScreen } from './screens/review'
 import { buildSettingsScreen } from './screens/settings'
@@ -22,6 +23,7 @@ import { countTokens } from '../core/tokenizer'
 const store = new Store()
 let wizard: Wizard | null = null
 const actions = new Actions(store, step => wizard?.goTo(step))
+void STEP
 
 function brand(): HTMLElement {
   return h('h1', { class: 'brand' }, 'Mult', h('span', { class: 'frac', 'aria-label': 'A/I' }, h('span', { class: 'frac-num' }, 'A'), h('span', { class: 'frac-slash' }), h('span', { class: 'frac-den' }, 'I')), 'Ball')
@@ -32,13 +34,14 @@ function init(): void {
   if (!root) throw new Error('missing #app')
 
   const screens: Screen[] = []
-  const prompt = buildPromptScreen(store, actions)
+  const data = buildDataScreen(store, actions)
+  const instructions = buildInstructionsScreen(store)
   const output = buildOutputScreen(store, () => { for (const s of screens) s.restore?.({ state: store.state, session: store.session }) })
   const models = buildModelsScreen(store, actions)
   const settings = buildSettingsScreen(store)
   const review = buildReviewScreen(store, actions)
   const results = buildResultsScreen(store, actions)
-  screens.push(prompt, output, models, settings, review, results)
+  screens.push(data, instructions, output, models, settings, review, results)
 
   const nav = h('nav', { class: 'wizard-nav', 'aria-label': 'Steps' })
   const dark = h('input', { type: 'checkbox' })

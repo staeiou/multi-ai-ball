@@ -84,7 +84,8 @@ export interface SharedParams {
   outputLength: number | null
   /** null = not set. Sent only where guidance says the model accepts it. */
   temperature: number | null
-  /** null = not set. Sent only where the model lists the value. */
+  /** null = not set. 'less' / 'more' map to each model's lowest / highest
+   * listed level; an exact level is sent where the model lists it. */
   effort: string | null
   responseFormat: ResponseFormatChoice
 }

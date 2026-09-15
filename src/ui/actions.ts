@@ -17,7 +17,9 @@ import { appendRow, deleteRun, listRuns, loadRun, newRunId, saveRun } from '../c
 import { countTokens } from '../core/tokenizer'
 import type { CallRow, FrozenRun } from '../core/types'
 import { pushRecent, saveKey } from '../state'
-import { catalogKey, currentBaseUrl, currentPartition, currentRows, selectedCatalogModels } from './model'
+import { applyGuesses, catalogKey, currentBaseUrl, currentPartition, currentRows, selectedCatalogModels } from './model'
+import { guessRoles } from '../core/guess'
+import type { ColumnRole } from '../core/types'
 import type { Store } from './store'
 
 export class Actions {
@@ -90,15 +92,32 @@ export class Actions {
         d.session.sheetSource = { name: file.name, bytes: parsed.bytes, sha256: parsed.sha256 }
         d.session.partitionOverride = null
         d.session.loadingSheet = false
-        // Keep roles the user already set for same-named columns; new columns are inputs.
-        const roles: typeof d.state.roles = {}
-        for (const column of parsed.columns) roles[column] = d.state.roles[column] ?? 'input'
-        d.state.roles = roles
+        // A fresh sheet gets fresh guesses; the user changes them by ticking boxes.
+        d.state.roles = guessRoles(parsed.rows, parsed.columns)
         d.state.flow = 'sheet'
+        d.state.promptAuto = true
+        d.state.contractAuto = true
+        applyGuesses(d)
       })
     } catch (error) {
       this.store.update(d => { d.session.loadingSheet = false; d.session.sheetError = `Could not read the file: ${(error as Error).message}` })
     }
+  }
+
+  setRole(column: string, role: ColumnRole): void {
+    this.store.update(d => {
+      d.state.roles[column] = role
+      d.session.partitionOverride = null
+      applyGuesses(d)
+    })
+  }
+
+  removeRole(column: string): void {
+    this.store.update(d => {
+      delete d.state.roles[column]
+      d.session.partitionOverride = null
+      applyGuesses(d)
+    })
   }
 
   // --- running --------------------------------------------------------------------------
@@ -149,7 +168,7 @@ export class Actions {
       d.session.sourceColumns = isSheet ? sourceColumns : null
     })
     await saveRun({ id: runId, createdAt: frozen.frozenAt, label: runLabel(frozen), frozen, sourceRows: isSheet ? sourceRows : undefined, sourceColumns: isSheet ? sourceColumns : undefined })
-    this.goTo(5)
+    this.goTo(6)
     await this.execute(frozen, runId)
   }
 
@@ -229,7 +248,7 @@ export class Actions {
       d.session.sourceColumns = stored.run.sourceColumns ?? null
       d.session.statusLine = `Opened saved run: ${done}/${rows.length} calls completed`
     })
-    this.goTo(5)
+    this.goTo(6)
   }
 
   async deleteStoredRun(id: string): Promise<void> {
@@ -290,7 +309,7 @@ export class Actions {
       })
       await saveRun({ id, createdAt: saved.frozen.frozenAt, label: runLabel(saved.frozen), frozen: saved.frozen, sourceRows: saved.sourceRows ?? undefined, sourceColumns: saved.sourceColumns ?? undefined })
       for (const [index, row] of saved.rows.entries()) if (row.status !== 'pending') void appendRow(id, index, row)
-      this.goTo(5)
+      this.goTo(6)
     } catch (error) {
       this.store.update(d => { d.session.statusLine = `Could not open: ${(error as Error).message}` })
     }

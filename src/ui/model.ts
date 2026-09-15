@@ -8,7 +8,8 @@ import type { SweepVariable } from '../core/cases'
 import { resolveContract } from '../core/contract'
 import { compileConstantBlock } from '../core/examples'
 import { templateProblems } from '../core/freeze'
-import { columnsOf, defaultRoles, inferPartition } from '../core/partition'
+import { columnsOf, columnsWithRole, defaultRoles, inferPartition } from '../core/partition'
+import { generatedItemTemplate, guessField } from '../core/guess'
 import type { Row } from '../core/partition'
 import { presetById } from '../core/providers/presets'
 import { promptPlaceholderNames } from '../core/template'
@@ -28,7 +29,9 @@ export function currentRows(data: AppData): { rows: Row[]; roles: Record<string,
   const { state, session } = data
   if (state.flow === 'sheet' && session.sheet) {
     const roles: Record<string, ColumnRole> = {}
-    for (const column of session.sheet.columns) roles[column] = state.roles[column] ?? 'input'
+    for (const column of session.sheet.columns) roles[column] = state.roles[column] ?? 'metadata'
+    // Output columns the user added that the sheet does not have.
+    for (const [column, role] of Object.entries(state.roles)) if (role === 'output' && !(column in roles)) roles[column] = 'output'
     return { rows: session.sheet.rows, roles, columns: session.sheet.columns, label: o => `Row ${o + 1}` }
   }
   if (state.flow === 'sweep') {
@@ -93,54 +96,92 @@ export interface Gate {
   why: string
 }
 
-/** Problems with the prompt-and-data stage, in the order a user should fix them. */
+/** Template-level problems: placeholders that cannot be bound. */
 export function promptProblems(data: AppData): string[] {
-  const { state, session } = data
+  const { state } = data
   const problems: string[] = []
-  if (!state.prompt.trim()) problems.push('Write the prompt first')
   if (state.flow === 'sheet') {
-    if (!session.sheet) problems.push('Upload a spreadsheet')
-    else {
-      const { roles } = currentRows(data)
-      for (const p of templateProblems(state.prompt, state.system, roles, true)) problems.push(p.message)
-      if (caseCount(data) === 0) problems.push('No rows to run: every row is either an example or has partly filled outputs')
-    }
+    if (!data.session.sheet) return problems
+    const { roles } = currentRows(data)
+    for (const p of templateProblems(state.prompt, state.system, roles, true)) problems.push(p.message)
   } else if (state.flow === 'sweep') {
-    const variables = sweepVariables(state)
-    if (variables.length === 0) problems.push('Add at least one variable with values')
-    const count = sweepCaseCount(variables)
-    if (count > SWEEP_MAX) problems.push(`${count.toLocaleString()} combinations is above the ${SWEEP_MAX.toLocaleString()} limit`)
-    const names = new Set(variables.map(v => v.name))
+    const names = new Set(sweepVariables(state).map(v => v.name))
     for (const name of promptPlaceholderNames(state.prompt, state.system)) if (!names.has(name)) problems.push(`{{${name}}} is not one of the variables`)
     for (const name of names) if (!promptPlaceholderNames(state.prompt, state.system).includes(name)) problems.push(`Variable ${name} is never used in the prompt`)
   } else {
     const names = promptPlaceholderNames(state.prompt, state.system)
-    if (names.length) problems.push(`{{${names[0]}}} has no value in single-prompt mode; switch to a sweep or a spreadsheet, or remove it`)
+    if (names.length) problems.push(`{{${names[0]}}} has no value in single-prompt mode; use a sweep or a spreadsheet, or remove it`)
   }
   return problems
 }
+
+/** Problems with the data step alone (before instructions are written). */
+export function dataProblems(data: AppData): string[] {
+  const { state, session } = data
+  if (state.flow === 'sheet') {
+    if (!session.sheet) return ['Upload a spreadsheet']
+    const { roles } = currentRows(data)
+    const problems: string[] = []
+    if (columnsWithRole(roles, 'input').length === 0) problems.push('Choose at least one column for the model to read')
+    if (caseCount(data) === 0) problems.push('No rows to fill in: every row already has its answers, or has them half filled')
+    return problems
+  }
+  if (state.flow === 'sweep') {
+    const variables = sweepVariables(state)
+    if (variables.length === 0) return ['Add at least one variable with values']
+    const count = sweepCaseCount(variables)
+    if (count > SWEEP_MAX) return [`${count.toLocaleString()} combinations is above the ${SWEEP_MAX.toLocaleString()} limit`]
+  }
+  return []
+}
+
+export function instructionProblems(data: AppData): string[] {
+  const { state } = data
+  const problems: string[] = []
+  if (state.flow === 'sheet') {
+    if (!state.system.trim() && !state.prompt.replace(/\{\{[^}]+\}\}/g, '').trim()) problems.push('Tell the model what to do with each row')
+  } else if (!state.prompt.trim()) problems.push(state.flow === 'sweep' ? 'Write the prompt, using {{variable}} where a value goes' : 'Write your prompt first')
+  for (const p of promptProblems(data)) if (!problems.includes(p) && !dataProblems(data).includes(p)) problems.push(p)
+  return problems
+}
+
+export const STEP = { data: 0, instructions: 1, format: 2, models: 3, settings: 4, review: 5, results: 6 } as const
 
 export function stageGate(step: number, data: AppData): Gate {
   const { state, session } = data
   const preset = presetById(state.providerId)
   const contractOk = resolveContract(state.contract).errors.length === 0
   const selected = selectedCatalogModels(data)
-  const blockers: string[] = []
-  if (step >= 0) blockers.push(...promptProblems(data))
-  if (step >= 1 && !contractOk) blockers.push('Fix the output-format errors')
-  if (step >= 2) {
-    if (preset.id === 'custom' && !state.customBase.trim()) blockers.push('Enter the endpoint base URL')
-    else if (!catalogCurrent(state, session)) blockers.push('Load the model list')
-    else if (selected.length === 0) blockers.push('Select at least one model')
-    if (preset.keyRequired && !session.apiKey) blockers.push('Add your API key (the list may load without it; a run will not)')
-  }
-  if (step === 0 || step === 1 || step === 2 || step === 4) {
-    const own = step === 0 ? promptProblems(data) : step === 1 ? (contractOk ? [] : ['Fix the output-format errors']) : step === 2 ? blockers.filter(b => !promptProblems(data).includes(b) && b !== 'Fix the output-format errors') : blockers
-    return { ok: own.length === 0, why: own.join(' · ') }
-  }
-  return { ok: true, why: '' }
+  const modelBlockers: string[] = []
+  if (preset.id === 'custom' && !state.customBase.trim()) modelBlockers.push('Enter the endpoint base URL')
+  else if (!catalogCurrent(state, session)) modelBlockers.push('Load the model list')
+  else if (selected.length === 0) modelBlockers.push('Pick at least one model')
+  if (preset.keyRequired && !session.apiKey) modelBlockers.push('Add your API key (the list may load without it; a run will not)')
+
+  let own: string[] = []
+  if (step === STEP.data) own = dataProblems(data)
+  else if (step === STEP.instructions) own = instructionProblems(data)
+  else if (step === STEP.format) own = contractOk ? [] : ['Fix the answer-format problems']
+  else if (step === STEP.models) own = modelBlockers
+  else if (step === STEP.review) own = [...dataProblems(data), ...instructionProblems(data), ...(contractOk ? [] : ['Fix the answer-format problems']), ...modelBlockers]
+  return { ok: own.length === 0, why: own.join(' · ') }
 }
 
 export function canRun(data: AppData): Gate {
-  return stageGate(4, data)
+  return stageGate(STEP.review, data)
+}
+
+/** Re-derive the generated item template and answer fields from the roles
+ * when the user has not taken them over. Called after any roles change. */
+export function applyGuesses(data: AppData): void {
+  const { state } = data
+  if (state.flow !== 'sheet') return
+  const { rows, roles } = currentRows(data)
+  const inputs = columnsWithRole(roles, 'input')
+  const outputs = columnsWithRole(roles, 'output')
+  if (state.promptAuto) state.prompt = generatedItemTemplate(inputs)
+  if (state.contractAuto) {
+    state.contract.fields = outputs.map(column => guessField(rows, column))
+    state.parserId = outputs.length ? 'json-unstack' : null
+  }
 }

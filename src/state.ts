@@ -29,8 +29,13 @@ export interface PersistedState {
   system: string
   /** Sweep variables: name -> one value per line. */
   sweep: Array<{ name: string; values: string }>
-  /** Sheet column roles by column name; the sheet itself is never persisted. */
+  /** Sheet column roles by column name; the sheet itself is never persisted.
+   * May name output columns that do not exist in the sheet (new columns). */
   roles: Record<string, ColumnRole>
+  /** The item template was generated from the input columns and follows them. */
+  promptAuto: boolean
+  /** The answer fields were generated from the output columns and follow them. */
+  contractAuto: boolean
   selected: SelectedModel[]
   shared: SharedParams
   repeats: number
@@ -60,6 +65,8 @@ export function defaultState(): PersistedState {
     system: '',
     sweep: [],
     roles: {},
+    promptAuto: true,
+    contractAuto: true,
     selected: [],
     shared: defaultShared(),
     repeats: 1,
