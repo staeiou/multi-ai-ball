@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "MultAIBall — tiny multi-model playground: one prompt, many models, one page. No backend, no database, no framework.",
+  "description": "MultAIBall: run one prompt, a sweep of variations, or a whole spreadsheet across many language models from your browser, with a Python bundle that reproduces the run.",
   "engines": {
     "node": ">=18"
   },
@@ -14,11 +14,13 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test tests/e2e/app.spec.ts",
+    "test:e2e": "playwright test tests/e2e/app.spec.ts tests/e2e/providers.spec.ts",
     "test:e2e:live": "playwright test tests/e2e/live.spec.ts",
     "test:e2e:all": "playwright test",
     "stub": "node dev/stub-server.mjs",
-    "sync:models-dev": "node scripts/sync-models-dev.mjs"
+    "sync:models-dev": "node scripts/sync-models-dev.mjs",
+    "check": "tsc --noEmit && vitest run && playwright test tests/e2e/app.spec.ts tests/e2e/providers.spec.ts",
+    "probe": "MULTIAIBALL_LIVE_PROBE=1 vitest run --config scripts/probe/vitest.config.ts"
   },
   "dependencies": {
     "gpt-tokenizer": "^3.4.0",

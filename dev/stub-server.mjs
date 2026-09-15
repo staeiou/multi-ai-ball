@@ -5,6 +5,7 @@
 //   stub-reverse   -> reverses the prompt
 //   stub-fail      -> always returns HTTP 500
 //   stub-flaky     -> returns HTTP 503 twice, then behaves like stub-echo
+//   stub-slow      -> echoes after 1.5 s (for pause / cancel tests)
 //   stub-json      -> answers {"frame": "civic", "score": 3, "echo": <first 40 chars of the prompt>}
 // Run: npm run stub  (default http://localhost:8787/v1, override PORT)
 import http from 'node:http'
@@ -17,6 +18,7 @@ const MODELS = [
   { id: 'stub-reverse', name: 'Stub Reverse', context_length: 32768, pricing: { prompt: '0.0000003', completion: '0.0000009' } },
   { id: 'stub-fail', name: 'Stub Always Fails', context_length: 32768, pricing: { prompt: '0.0000001', completion: '0.0000002' } },
   { id: 'stub-flaky', name: 'Stub Flaky (503 twice)', context_length: 32768, pricing: { prompt: '0.0000002', completion: '0.0000008' } },
+  { id: 'stub-slow', name: 'Stub Slow (1.5 s)', context_length: 32768, pricing: { prompt: '0.0000001', completion: '0.0000001' } },
   { id: 'stub-json', name: 'Stub JSON', context_length: 32768, pricing: { prompt: '0.0000001', completion: '0.0000001' } },
 ]
 
@@ -125,7 +127,7 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    await new Promise(r => setTimeout(r, 150 + Math.random() * 300))
+    await new Promise(r => setTimeout(r, model === 'stub-slow' ? 1500 : 150 + Math.random() * 300))
     const text = render(model, extractPrompt(body, isAnthropic ? 'anthropic' : 'openai'))
 
     if (isAnthropic) {

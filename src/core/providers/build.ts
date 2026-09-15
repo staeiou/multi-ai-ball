@@ -167,7 +167,7 @@ export function buildFrozenModel(input: BuildInput): FrozenModel {
   const owned = OWNED_KEYS[preset.shape]
   for (const [key, value] of Object.entries(settings.extras ?? {})) {
     if (owned.includes(key)) {
-      report.push({ param: key, sent: false, reason: 'structural key owned by the app; not sent', source: 'user' })
+      report.push({ param: key, sent: false, reason: `structural key owned by the app; your value ${JSON.stringify(value).slice(0, 60)} is not sent`, source: 'user' })
       continue
     }
     const overrode = key in body

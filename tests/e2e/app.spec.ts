@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
 const STUB_BASE = 'http://localhost:8787'
-const STUB_MODELS = 6
+const STUB_MODELS = 7
 
 async function connectStub(page: Page): Promise<void> {
   await page.selectOption('.provider-band select', 'custom')
@@ -217,3 +217,118 @@ function streamToString(stream: NodeJS.ReadableStream): Promise<Buffer> {
     stream.on('error', reject)
   })
 }
+
+test.describe('the rest of the surface', () => {
+  test('variations: every combination becomes a case and the blanks are checked against the variables', async ({ page }) => {
+    await page.click('button.chip[data-flow="sweep"]')
+    await page.click('text=+ Add a blank to vary')
+    await page.fill('.sweep-var input', 'name')
+    await page.locator('.sweep-var input').press('Tab')
+    await page.fill('.sweep-var textarea', 'Ann\nBob')
+    await page.locator('.sweep-var textarea').press('Tab')
+    await page.click('text=+ Add a blank to vary')
+    await page.fill('.sweep-var >> nth=1 >> input', 'city')
+    await page.locator('.sweep-var >> nth=1 >> input').press('Tab')
+    await page.fill('.sweep-var >> nth=1 >> textarea', 'Oslo\nRome\nLima')
+    await page.locator('.sweep-var >> nth=1 >> textarea').press('Tab')
+    await expect(page.locator('.sweep-box')).toContainText('6 combinations')
+    await next(page)
+    await page.fill('textarea[data-field="prompt"]', 'Greet {{name}} from {{town}}')
+    await expect(page.locator('.step.active .inline-blocker')).toContainText('{{town}}')
+    await page.fill('textarea[data-field="prompt"]', 'Greet {{name}} from {{city}}')
+    await expect(page.locator('.preview-user')).toContainText('Greet Ann from Oslo')
+    await next(page, 2)
+    await connectStub(page)
+    await pickModel(page, 'stub-echo')
+    await next(page, 2)
+    await expect(page.locator('.review-summary')).toContainText('6 (6 × 1 × 1 repeat)')
+    await runAndWait(page, 6)
+    await expect(page.locator('.final-table')).toContainText('Greet Bob from Lima')
+  })
+
+  test('pause holds new calls, resume continues, cancel stops; then the missing calls can be rerun', async ({ page }) => {
+    await next(page)
+    await page.fill('textarea[data-field="prompt"]', 'Slowly')
+    await next(page, 2)
+    await connectStub(page)
+    await pickModel(page, 'stub-slow')
+    await next(page)
+    await page.fill('[data-field="repeats"]', '4')
+    await page.locator('[data-field="repeats"]').press('Tab')
+    await page.fill('[data-field="concurrency"]', '1')
+    await page.locator('[data-field="concurrency"]').press('Tab')
+    await next(page)
+    await expect(page.locator('button.run-button')).toBeEnabled({ timeout: 15_000 })
+    await page.click('button.run-button')
+    await page.click('button:has-text("Pause")')
+    await expect(page.locator('.status-line')).toContainText('Paused')
+    await page.click('button:has-text("Resume")')
+    await expect(page.locator('.status.ok')).toHaveCount(2, { timeout: 15_000 })
+    await page.click('button:has-text("Cancel")')
+    await expect(page.locator('.status-line')).toContainText('Stopped', { timeout: 15_000 })
+    const done = await page.locator('.status.ok').count()
+    expect(done).toBeLessThan(4)
+    await page.click('button:has-text("Run the missing calls")')
+    await expect(page.locator('.status.ok')).toHaveCount(4, { timeout: 20_000 })
+    await expect(page.locator('.status-line')).toContainText('Done')
+  })
+
+  test('a model typed by id runs even when the list does not carry it', async ({ page }) => {
+    await next(page)
+    await page.fill('textarea[data-field="prompt"]', 'Typed model')
+    await next(page, 2)
+    await connectStub(page)
+    await page.fill('input[placeholder*="Add a model by id"]', 'stub-uppercase')
+    await page.press('input[placeholder*="Add a model by id"]', 'Enter')
+    await expect(page.locator('.selected-col .model-row')).toHaveCount(1)
+    await next(page, 2)
+    await runAndWait(page, 1)
+    await expect(page.locator('.final-table')).toContainText('TYPED MODEL')
+  })
+
+  test('exports: XLSX, JSONL, the Python bundle, and a run file that reopens with its rows', async ({ page }) => {
+    await next(page)
+    await page.fill('textarea[data-field="prompt"]', 'Export me')
+    await next(page, 2)
+    await connectStub(page)
+    await pickModel(page, 'stub-echo')
+    await next(page, 2)
+    await runAndWait(page, 1)
+    for (const [label, pattern] of [['Results (XLSX)', /\.xlsx$/], ['JSONL', /\.jsonl$/], ['Python bundle', /python\.zip$/]] as const) {
+      const [download] = await Promise.all([page.waitForEvent('download'), page.click(`text=${label}`)])
+      expect(download.suggestedFilename()).toMatch(pattern)
+    }
+    const [runFile] = await Promise.all([page.waitForEvent('download'), page.click('text=Save run file')])
+    const path = await runFile.path()
+    expect(path).not.toBeNull()
+    // A fresh page has no run; opening the file restores it.
+    await page.goto('/')
+    await page.setInputFiles('input[type=file][accept=".zip"]', path!)
+    await expect(page.locator('.step.active h2')).toHaveText('Results')
+    await expect(page.locator('.final-table tbody tr')).toHaveCount(1)
+    await expect(page.locator('.final-table')).toContainText('Export me')
+  })
+
+  test('results can be filtered by text and by status', async ({ page }) => {
+    await next(page)
+    await page.fill('textarea[data-field="prompt"]', 'Filter me')
+    await next(page, 2)
+    await connectStub(page)
+    await pickModel(page, 'stub-echo')
+    await pickModel(page, 'stub-fail')
+    await next(page, 2)
+    await runAndWait(page, 2)
+    await page.selectOption('.result-status', 'error')
+    await expect(page.locator('.final-table tbody tr')).toHaveCount(1)
+    await page.selectOption('.result-status', 'all')
+    await page.fill('.result-search', 'stub-echo')
+    await expect(page.locator('.final-table tbody tr')).toHaveCount(1)
+  })
+
+  test('dark mode toggles the theme and persists', async ({ page }) => {
+    await page.check('.app-header input[type=checkbox]')
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+    await page.reload()
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  })
+})

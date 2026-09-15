@@ -7,7 +7,7 @@ import './styles.css'
 
 import { Actions } from './actions'
 import { h } from './dom'
-import { STEP, stageGate } from './model'
+import { stageGate } from './model'
 import { buildModelsScreen } from './screens/models'
 import { buildOutputScreen } from './screens/output'
 import { buildDataScreen } from './screens/data'
@@ -23,7 +23,6 @@ import { countTokens } from '../core/tokenizer'
 const store = new Store()
 let wizard: Wizard | null = null
 const actions = new Actions(store, step => wizard?.goTo(step))
-void STEP
 
 function brand(): HTMLElement {
   return h('h1', { class: 'brand' }, 'Mult', h('span', { class: 'frac', 'aria-label': 'A/I' }, h('span', { class: 'frac-num' }, 'A'), h('span', { class: 'frac-slash' }), h('span', { class: 'frac-den' }, 'I')), 'Ball')

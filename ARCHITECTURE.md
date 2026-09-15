@@ -75,7 +75,7 @@ endpoints to answer questions the catalogs cannot.
 - `run.test.ts` INVARIANT 2: the string `fetch` receives is `renderCall(...).bodyString`; its SHA-256 is on the row.
 - `py.test.ts` INVARIANT 3: Python's `body_for(index)` equals the browser's body after canonical JSON for every coordinate; task counts match.
 - `parsers-python.test.ts`: the Python parser twin passes the same corpus.
-- `tests/e2e/app.spec.ts`: seven flows against `dev/stub-server.mjs`.
+- `tests/e2e/app.spec.ts`: thirteen flows against `dev/stub-server.mjs`; `tests/e2e/providers.spec.ts`: OpenAI, Anthropic and OpenRouter mocked at the network edge with their real catalog shapes (`tests/e2e/fixtures/catalogs.ts`), checking guidance, the check screen and each wire shape.
 - `tests/e2e/live.spec.ts` (opt-in, keyed): one refusing model per provider, temperature omitted per guidance, run answers.
 
 ## Rules

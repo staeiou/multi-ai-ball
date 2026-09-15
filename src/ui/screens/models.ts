@@ -4,6 +4,7 @@
 // model has a gear for its own settings: response-format override, extra
 // parameters, and OpenRouter routing.
 
+import { manualCatalogModel } from '../../core/providers/guidance'
 import { PRESETS, presetById } from '../../core/providers/presets'
 import type { CatalogModel, ProviderId, ResponseFormatChoice } from '../../core/types'
 import { loadRecent } from '../../state'
@@ -100,7 +101,7 @@ export function buildModelsScreen(store: Store, actions: Actions): Screen {
     if (!id) return
     store.update(d => {
       if (!d.session.catalog.some(m => m.id === id)) {
-        d.session.catalog.push(manual(d.state.providerId, id))
+        d.session.catalog.push(manualCatalogModel(d.state.providerId, id))
         if (!d.session.catalogKey) d.session.catalogKey = `${d.state.providerId}|${d.state.customBase.trim().replace(/\/+$/, '')}`
       }
       if (!d.state.selected.some(s => s.id === id)) d.state.selected.push({ id, settings: { extras: {} } })
@@ -123,11 +124,6 @@ export function buildModelsScreen(store: Store, actions: Actions): Screen {
   })
 
   function current(): AppData { return { state: store.state, session: store.session } }
-
-  function manual(provider: ProviderId, id: string): CatalogModel {
-    // Lazy import avoided: guidance for a typed id comes from the same module the catalog uses.
-    return manualModel(provider, id)
-  }
 
   function inputsFor(data: AppData) {
     return costInputs(previewConstantBlock(data), data.state.prompt, data.state.system, data.state.shared.outputLength, caseCount(data) * Math.max(1, data.state.repeats))
@@ -312,10 +308,4 @@ export function buildModelsScreen(store: Store, actions: Actions): Screen {
       remember.checked = data.state.keyRemember
     },
   }
-}
-
-// A model typed by id. Imported lazily from guidance to keep this file about the DOM.
-import { manualCatalogModel } from '../../core/providers/guidance'
-function manualModel(provider: ProviderId, id: string): CatalogModel {
-  return manualCatalogModel(provider, id)
 }
