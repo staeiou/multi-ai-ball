@@ -108,6 +108,6 @@ C. A guided one-question-per-screen wizard of ten steps. Most hand-holding; also
 
 **What the tests caught while building.** A column with a single filled cell was guessed as an output (fixed: at least two filled cells). Five distinct short sentences were guessed as "choices" (fixed: choices need a repeated value or label-like one-or-two-word values). "Back to automatic" restored the flag without regenerating (fixed: `applyGuesses` on both reset buttons). Two e2e selectors matched hidden screens' elements.
 
-**Verified.** `tsc` clean; vitest 113; Playwright 8 flows including the new-column sheet and the guessed-fields checks; `vite build`. The live smoke test's walk was updated for the new step order but not re-run today.
+**Verified.** `tsc` clean; vitest 113; Playwright 8 flows including the new-column sheet and the guessed-fields checks; `vite build`. The live smoke test's walk was updated for the new step order and re-run: 3 of 3 pass.
 
 **Handoff written.** `HANDOFF-PROVIDER-NORMALIZATION-AND-UI-20260915.md`: what normalizes across a provider's models (length fully, schema as yes/no with a content-preserving fallback, effort as a relative control) and what does not (temperature, any absolute knob); per-model controls as the exception via the gear; the four disclosure layers with the check screen as the pedagogical bridge to API vocabulary; two decisions for the owner (a rule-based model-suggestion list vs hand-maintained vs none; keep or revert the relative effort control).
