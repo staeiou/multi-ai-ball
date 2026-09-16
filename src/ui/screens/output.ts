@@ -166,12 +166,16 @@ export function buildOutputScreen(store: Store, onTemplateLoaded: () => void): S
       const description = h('input', { class: 'input', placeholder: 'Explain this field to the model (optional)' })
       description.value = field.description ?? ''
       description.addEventListener('change', () => store.update(d => { d.state.contract.fields![index]!.description = description.value || undefined; d.state.contractAuto = false }))
+      // One field is one boxed block: a header band (number, name, kind,
+      // remove), the details, then the Meaning line on its own band.
       fieldsBox.append(h('div', { class: 'field-entry' },
-        h('label', { class: 'param-field' }, h('span', {}, 'Field'), name),
-        h('label', { class: 'param-field' }, h('span', {}, 'Kind of answer'), type),
-        remove,
-        detail,
-        h('label', { class: 'param-field meaning-field' }, h('span', {}, 'Meaning'), description),
+        h('div', { class: 'field-entry-head' },
+          h('span', { class: 'field-entry-number' }, `Field ${index + 1}`),
+          h('label', { class: 'param-field' }, h('span', {}, 'Name'), name),
+          h('label', { class: 'param-field' }, h('span', {}, 'Kind of answer'), type),
+          remove),
+        h('div', { class: 'field-entry-body' }, detail),
+        h('label', { class: 'param-field field-entry-meaning' }, h('span', {}, 'Meaning: what to tell the model about this field'), description),
       ))
     })
     const add = h('button', { class: 'btn', type: 'button' }, '+ Add a field')

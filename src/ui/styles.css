@@ -474,35 +474,59 @@ textarea.input {
 
 .field-table {
   display: grid;
-  gap: 8px;
+  gap: 22px;
 }
 
 .choice-detail { display: grid; gap: 7px; width: 100%; }.choice-row { display: grid; grid-template-columns: minmax(140px, .8fr) minmax(200px, 1.5fr) 30px; gap: 7px; align-items: center; }.choice-remove-spacer { width: 30px; height: 1px; }.parser-notice { margin: 8px 0 0; padding: 8px 10px; border-left: 3px solid var(--primary); background: var(--primary-soft); color: var(--text); font-size: 12.5px; }
 
+/* One field, one box: a thick border, a tinted header band with the number,
+   name and kind, the details in the body, and the Meaning line on its own
+   band under a heavy rule. Boxes sit 22px apart. */
 .field-entry {
-  display: grid;
-  gap: 6px;
-  grid-template-columns: 1fr 130px auto;
-  align-items: start;
+  border: 2px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--card);
+  overflow: hidden;
 }
 
-/* One field reads as one block: a strong rule between fields, a light one
-   between a field's details and its Meaning line, and a strong one before
-   the add button. Each entry labels its own controls, so no header row. */
-.field-entry + .field-entry { margin-top: 8px; padding-top: 14px; border-top: 2px solid var(--border-strong); }
-.field-entry .meaning-field { grid-column: 1 / -1; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
-.field-table > .btn { justify-self: start; margin-top: 8px; padding-top: 14px; border-top: 0; }
-.field-table > .field-entry:last-of-type { padding-bottom: 14px; border-bottom: 2px solid var(--border-strong); }
+.field-entry-head {
+  display: grid;
+  grid-template-columns: auto 1fr 150px auto;
+  gap: 12px;
+  align-items: end;
+  padding: 10px 14px 12px;
+  background: var(--primary-soft);
+  border-bottom: 2px solid var(--border-strong);
+}
+
+.field-entry-number {
+  align-self: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.field-entry-head .minibtn { align-self: center; }
+
+.field-entry-body { padding: 12px 14px; }
 
 .field-entry .field-detail {
-  grid-column: 1 / -1;
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  border: 1px dashed var(--border);
-  border-radius: 6px;
-  padding: 6px 8px;
 }
+
+.field-entry-meaning {
+  padding: 10px 14px 12px;
+  background: var(--bg);
+  border-top: 2px solid var(--border-strong);
+}
+
+.field-table > .btn { justify-self: start; }
 
 .contract-options {
   display: grid;
