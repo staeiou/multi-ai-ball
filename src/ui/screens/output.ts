@@ -29,8 +29,9 @@ export function buildOutputScreen(store: Store, onTemplateLoaded: () => void): S
   const modeBox = h('div', { class: 'chips' })
   const fieldsBox = h('div', { class: 'field-table' })
   const errors = h('div', { class: 'contract-errors' })
-  const whatModelSees = h('details', { class: 'schema-preview' }, h('summary', {}, 'What the model is told about the format'), h('pre', {}))
-  const callPreview = h('details', { class: 'schema-preview' }, h('summary', {}, 'What every call carries: worked examples and answer format'), h('pre', { class: 'constant-block' }))
+  const formatDebug = h('section', { class: 'advanced-debug-section' }, h('h3', {}, 'What the model is told about the format'), h('pre', {}))
+  const callDebug = h('section', { class: 'advanced-debug-section' }, h('h3', {}, 'What every call carries: worked examples and answer format'), h('pre', { class: 'constant-block' }))
+  const advancedDebug = h('details', { class: 'schema-preview advanced-debug' }, h('summary', {}, 'Advanced debug'), formatDebug, callDebug)
   const rationaleFirst = h('input', { type: 'checkbox' })
   const rationaleSpec = h('input', { class: 'input', placeholder: 'What the reasoning should cover (optional)' })
   const strictJson = h('input', { type: 'checkbox' })
@@ -60,9 +61,8 @@ export function buildOutputScreen(store: Store, onTemplateLoaded: () => void): S
     autoNote,
     fieldsBox,
     errors,
-    whatModelSees,
-    callPreview,
     more,
+    advancedDebug,
   )
 
   rationaleFirst.addEventListener('change', () => store.update(d => { d.state.contract.rationaleFirst = rationaleFirst.checked }))
@@ -184,8 +184,8 @@ export function buildOutputScreen(store: Store, onTemplateLoaded: () => void): S
   function choiceEditor(field: ContractField, index: number): HTMLElement {
     const values = [...(field.values ?? []), '']
     const list = h('div', { class: 'choice-editor' })
-    values.forEach((choice, ci) => {
-      const value = h('input', { class: 'input', placeholder: ci === values.length - 1 ? 'add a choice…' : 'choice' })
+    const appendChoice = (choice: string, ci: number, trailing: boolean): void => {
+      const value = h('input', { class: 'input', placeholder: trailing ? 'add a choice…' : 'choice' })
       value.value = choice
       const note = h('input', { class: 'input', placeholder: 'when to pick it (optional)' })
       note.value = field.valueNotes?.[choice] ?? ''
@@ -206,8 +206,29 @@ export function buildOutputScreen(store: Store, onTemplateLoaded: () => void): S
       })
       value.addEventListener('change', commit)
       note.addEventListener('change', commit)
-      list.append(h('div', { class: 'choice-row' }, value, note))
-    })
+      const row = h('div', { class: 'choice-row' }, value, note)
+      if (trailing) {
+        row.dataset.trailing = 'true'
+        value.addEventListener('input', () => {
+          if (!value.value.trim() || !row.dataset.trailing) return
+          delete row.dataset.trailing
+          appendChoice('', ci + 1, true)
+        })
+        // Keep the blank row aligned with rows that have a remove button.
+        row.append(h('span', { class: 'choice-remove-spacer', 'aria-hidden': 'true' }))
+      } else {
+        const remove = h('button', { class: 'minibtn danger', type: 'button', title: `Remove ${choice}` }, '×')
+        remove.addEventListener('click', () => store.update(d => {
+          const f = d.state.contract.fields![index]!
+          f.values = (f.values ?? []).filter((_, valueIndex) => valueIndex !== ci)
+          if (f.valueNotes) delete f.valueNotes[choice]
+          d.state.contractAuto = false
+        }))
+        row.append(remove)
+      }
+      list.append(row)
+    }
+    values.forEach((choice, ci) => appendChoice(choice, ci, ci === values.length - 1))
     return h('div', { class: 'choice-detail' }, h('strong', {}, 'Choices'), list)
   }
 
@@ -235,11 +256,12 @@ export function buildOutputScreen(store: Store, onTemplateLoaded: () => void): S
     errors.replaceChildren(...list.map(e => h('p', { class: 'contract-error' }, e.message)))
     const ctx = buildContractContext(state.contract)
     const prose = renderContractProse(state.contract)
-    whatModelSees.hidden = !prose
-    whatModelSees.querySelector('pre')!.textContent = prose ? `${prose}\n\n(Where the model supports it, this JSON schema is also enforced:)\n${JSON.stringify(ctx?.schema ?? null, null, 2)}` : ''
+    formatDebug.hidden = !prose
+    formatDebug.querySelector('pre')!.textContent = prose ? `${prose}\n\n(Where the model supports it, this JSON schema is also enforced:)\n${JSON.stringify(ctx?.schema ?? null, null, 2)}` : ''
     const block = previewConstantBlock(data)
-    callPreview.hidden = block.length === 0
-    callPreview.querySelector('pre')!.textContent = block
+    callDebug.hidden = block.length === 0
+    callDebug.querySelector('pre')!.textContent = block
+    advancedDebug.hidden = !prose && block.length === 0
   }
 
   renderTemplates()
