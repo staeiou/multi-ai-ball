@@ -46,6 +46,7 @@ templates + contract + examples ──freeze──▶  FrozenRun
 | `run.ts` | bounded pool over coordinates; pause, cancel, subset (rerun) |
 | `parsers.ts` | built-in parsers, corpus-pinned twin with `parsing.py` |
 | `export.ts` | long table (with the literal request per row, regenerated), model report, completed datasets, CSV/JSONL/XLSX |
+| `breakdown.ts` | how one answer column is distributed over a set of rows, overall and per model; pure, the results screen renders it |
 | `py.ts` + `py/runtime/` | the bundle: experiment.json + cases.csv + runtime |
 | `runstore.ts` | IndexedDB: frozen run at freeze, one row per completed call |
 | `cases.ts` | sheet parsing (in `sheet.worker.ts`), Cartesian sweep |

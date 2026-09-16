@@ -1,7 +1,11 @@
-// Screen 6: results. One row per call, fifty to a page, filters, a detail
-// dialog per row (parsed fields, response, reasoning, the exact request, raw
-// payload, error), exports, and the saved runs with Open / Resume / Delete.
+// Screen 6: results. One row per call, filters, sortable columns, a live
+// breakdown of any answer column (core/breakdown.ts) over the rows shown, a
+// detail dialog per row (parsed fields, response, reasoning, the exact
+// request, raw payload, error), exports, and the saved runs.
 
+import { breakdown, inferKind } from '../../core/breakdown'
+import type { FieldKind } from '../../core/breakdown'
+import { formatNumber } from '../../core/breakdown'
 import { renderMarkdown } from '../markdown'
 import { formatUsd } from '../../core/pricing'
 import { renderCall } from '../../core/render'
@@ -17,6 +21,11 @@ import type { Screen } from './screen'
 const VIRTUAL_ABOVE = 1000
 const ROW_HEIGHT = 40
 const OVERSCAN = 20
+
+/** Sorting by status groups finished calls first, like the live order. */
+const STATUS_RANK: Record<CallRow['status'], number> = { ok: 0, error: 1, running: 2, pending: 3 }
+
+type SortDir = 'asc' | 'desc'
 
 export function buildResultsScreen(store: Store, actions: Actions): Screen {
   const status = h('span', { class: 'muted small status-line' })
@@ -38,6 +47,8 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
   const search = h('input', { class: 'input result-search', type: 'search', placeholder: 'Filter by case, model, or text…' })
   const statusFilter = h('select', { class: 'input result-status' }, h('option', { value: 'all' }, 'All'), h('option', { value: 'ok' }, 'Succeeded'), h('option', { value: 'error' }, 'Failed'), h('option', { value: 'running' }, 'In flight'), h('option', { value: 'pending' }, 'Waiting'), h('option', { value: 'parse-failed' }, 'Could not parse'))
   const modelFilter = h('select', { class: 'input result-model' })
+  const breakdownBox = h('div', { class: 'breakdown-box' })
+  breakdownBox.hidden = true
   const tableWrap = h('div', { class: 'final-table-wrap' })
   const saved = h('div', { class: 'saved-runs' })
 
@@ -48,6 +59,7 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
     h('div', { class: 'results-toolbar' }, status, pause, resume, cancel, rerun),
     h('div', { class: 'results-toolbar' }, exportXlsx, exportCsv, exportJsonl, exportCompleted, exportPy, saveRun, openRun, openRunInput),
     h('div', { class: 'result-filters' }, search, statusFilter, modelFilter),
+    breakdownBox,
     tableWrap,
     h('details', { class: 'schema-preview saved-runs-box' }, h('summary', {}, 'Saved runs on this device'), saved),
   )
@@ -84,11 +96,73 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
     return [...keys].sort().slice(0, 12)
   }
 
-  function cell(row: CallRow, key: string): string {
-    if (key === 'parsed') return row.parsed === null ? '' : typeof row.parsed === 'object' ? JSON.stringify(row.parsed) : String(row.parsed)
-    if (!row.parsed || typeof row.parsed !== 'object') return ''
+  /** The parsed value behind one answer column, or null when there is none. */
+  function parsedValue(row: CallRow, key: string): unknown {
+    if (row.parsed === null || row.parsed === 'PARSER_ERROR') return null
+    if (key === 'parsed') return row.parsed
+    if (typeof row.parsed !== 'object') return null
     const v = (row.parsed as Record<string, unknown>)[key]
-    return v === undefined || v === null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v)
+    return v === undefined ? null : v
+  }
+
+  function cell(row: CallRow, key: string): string {
+    const v = parsedValue(row, key)
+    return v === null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v)
+  }
+
+  function statusLabel(row: CallRow): string {
+    return row.status === 'running' ? 'running' : row.status === 'pending' ? 'waiting' : row.status === 'ok' && row.parseStatus === 'failed' ? 'ok, unparsed' : row.status
+  }
+
+  // --- sorting: a column key and a direction; null is the default order ---------
+
+  let sort: { key: string; dir: SortDir } | null = null
+  let breakdownKey: string | null = null
+
+  function sortValue(frozen: FrozenRun, row: CallRow, key: string): number | string | null {
+    if (key === 'case') return row.coord.caseIndex
+    if (key === 'model') return frozen.models[row.coord.modelIndex]!.id
+    if (key === 'repeat') return row.coord.repeat
+    if (key === 'status') return STATUS_RANK[row.status] + (row.parseStatus === 'failed' ? 0.5 : 0)
+    if (key === 'response') return row.status === 'error' ? (row.error ?? '') : responseText(row)
+    if (key === 'cost') return row.costUsd ?? row.estimatedCostUsd ?? null
+    if (key.startsWith('parsed:')) {
+      const v = parsedValue(row, key.slice('parsed:'.length))
+      if (v === null || v === '') return null
+      if (typeof v === 'number') return v
+      if (typeof v === 'string' && /^\s*-?\d+(\.\d+)?\s*$/.test(v)) return Number(v)
+      return typeof v === 'object' ? JSON.stringify(v) : String(v)
+    }
+    return null
+  }
+
+  /** Empty cells last whichever way; numbers numerically; else as text. */
+  function compare(frozen: FrozenRun, key: string, dir: SortDir): (a: Visible, b: Visible) => number {
+    const sign = dir === 'asc' ? 1 : -1
+    return (a, b) => {
+      const va = sortValue(frozen, a.row, key)
+      const vb = sortValue(frozen, b.row, key)
+      if (va === null && vb === null) return a.index - b.index
+      if (va === null) return 1
+      if (vb === null) return -1
+      const c = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb))
+      return c * sign || a.index - b.index
+    }
+  }
+
+  /** A header cell: the label sorts (asc, desc, off); answer columns and the
+   * status column also get a button that opens the breakdown. */
+  function th(key: string, text: string, opts: { center?: boolean; breakdown?: boolean } = {}): HTMLElement {
+    const active = sort?.key === key
+    const sortBtn = h('button', { class: `th-sort${active ? ' active' : ''}`, type: 'button', title: 'Sort by this column (again to flip, a third time to clear)' }, text, active ? (sort!.dir === 'asc' ? ' ▲' : ' ▼') : '')
+    sortBtn.addEventListener('click', () => { sort = !active ? { key, dir: 'asc' } : sort!.dir === 'asc' ? { key, dir: 'desc' } : null; renderTable(current()) })
+    const cellEl = h('th', { class: opts.center ? 'center' : '' }, sortBtn)
+    if (opts.breakdown) {
+      const btn = h('button', { class: `th-breakdown${breakdownKey === key ? ' active' : ''}`, type: 'button', title: 'How the answers in this column are distributed, over the rows shown' }, '▤')
+      btn.addEventListener('click', () => { breakdownKey = breakdownKey === key ? null : key; renderTable(current()) })
+      cellEl.append(btn)
+    }
+    return cellEl
   }
 
   interface Visible { row: CallRow; index: number }
@@ -121,17 +195,20 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
       const c = frozen.cases[row.coord.caseIndex]!
       return `${c.label} ${model.id} ${responseText(row)} ${row.error ?? ''} ${JSON.stringify(row.parsed ?? '')}`.toLowerCase().includes(q)
     })
-    const liveOrder = data.session.running && !q && sf === 'all' && !mf
-    if (liveOrder) {
+    // A chosen sort replaces the live order (finished first) until cleared.
+    const liveOrder = !sort && data.session.running && !q && sf === 'all' && !mf
+    if (sort) visibleRows.sort(compare(frozen, sort.key, sort.dir))
+    else if (liveOrder) {
       const rank = (row: CallRow): number => row.status === 'ok' || row.status === 'error' ? 0 : row.status === 'running' ? 1 : 2
       visibleRows.sort((a, b) => rank(a.row) - rank(b.row) || a.index - b.index)
     }
     visibleColumns = parsedColumns(frozen, rows)
+    renderBreakdown(frozen, rows.length)
     virtual = visibleRows.length > VIRTUAL_ABOVE
     const multi = frozen.models.length > 1
     const table = h('table', { class: `grid-table final-table ${virtual ? 'virtual' : ''}` })
-    table.append(h('thead', {}, h('tr', {}, h('th', {}, 'Case'), multi ? h('th', {}, 'Model') : null, frozen.repeats > 1 ? h('th', {}, 'Rep') : null, h('th', { class: 'center' }, 'Status'),
-      ...visibleColumns.map(c => h('th', {}, c)), h('th', {}, 'Response'), h('th', { class: 'center' }, 'Cost'))))
+    table.append(h('thead', {}, h('tr', {}, th('case', 'Case'), multi ? th('model', 'Model') : null, frozen.repeats > 1 ? th('repeat', 'Rep', { center: true }) : null, th('status', 'Status', { center: true, breakdown: true }),
+      ...visibleColumns.map(c => th(`parsed:${c}`, c, { breakdown: true })), th('response', 'Response'), th('cost', 'Cost', { center: true }))))
     tbody = h('tbody')
     table.append(tbody)
     tableWrap.append(table)
@@ -181,13 +258,55 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
       h('td', { class: 'mono' }, c.label),
       multi ? h('td', { class: 'mono' }, model.id) : null,
       frozen.repeats > 1 ? h('td', { class: 'center' }, String(row.coord.repeat + 1)) : null,
-      h('td', { class: 'center' }, h('span', { class: `status ${row.status}${row.parseStatus === 'failed' ? ' parse-failed' : ''}` }, row.status === 'running' && row.error ? row.error.slice(0, 24) : row.status === 'running' ? 'running' : row.status === 'pending' ? 'waiting' : row.status === 'ok' && row.parseStatus === 'failed' ? 'ok, unparsed' : row.status)),
+      h('td', { class: 'center' }, h('span', { class: `status ${row.status}${row.parseStatus === 'failed' ? ' parse-failed' : ''}` }, row.status === 'running' && row.error ? row.error.slice(0, 24) : statusLabel(row))),
       ...visibleColumns.map(k => h('td', { class: 'parsed-cell' }, cell(row, k).slice(0, 80))),
       h('td', { class: `result-long ${row.status === 'error' ? 'err-text' : ''}` }, text.length > 240 ? `${text.slice(0, 240)}…` : text),
       h('td', { class: 'center' }, formatUsd(row.costUsd ?? row.estimatedCostUsd)),
     )
     tr.addEventListener('click', () => openDetail(frozen, row, index))
     return tr
+  }
+
+  /** The breakdown of the chosen column over the rows currently shown: counts
+   * as bars, and a per-model table when the run has more than one model.
+   * Rendered on every refresh, so it follows a run live. */
+  function renderBreakdown(frozen: FrozenRun, allRows: number): void {
+    breakdownBox.replaceChildren()
+    breakdownBox.hidden = breakdownKey === null
+    if (breakdownKey === null) return
+    const key = breakdownKey
+    const isStatus = key === 'status'
+    const name = isStatus ? 'Status' : key.slice('parsed:'.length)
+    const models = frozen.models.map(m => m.id)
+    const items = visibleRows.map(({ row }) => ({ model: models[row.coord.modelIndex]!, value: isStatus ? statusLabel(row) : row.status === 'ok' ? parsedValue(row, name) : null }))
+    const field = frozen.contract?.fields.find(f => f.name === name)
+    const kind: FieldKind = isStatus ? 'categorical' : field ? (field.type === 'number' || field.type === 'integer' ? 'numeric' : 'categorical') : inferKind(items)
+    const b = breakdown(items, kind, models)
+    const close = h('button', { class: 'minibtn', type: 'button' }, 'Close')
+    close.addEventListener('click', () => { breakdownKey = null; renderTable(current()) })
+    const filtered = visibleRows.length !== allRows
+    breakdownBox.append(h('div', { class: 'breakdown-head' }, h('strong', {}, name),
+      h('span', { class: 'muted small' }, `${b.answered.toLocaleString()} of ${b.total.toLocaleString()} calls${filtered ? ' shown (filters apply)' : ''} have an answer`), close))
+    if (b.stats) breakdownBox.append(h('p', { class: 'breakdown-stats' }, `min ${formatNumber(b.stats.min)} · median ${formatNumber(b.stats.median)} · mean ${formatNumber(b.stats.mean)} · max ${formatNumber(b.stats.max)}`))
+    if (b.answered === 0) { breakdownBox.append(h('p', { class: 'muted small' }, 'Nothing has come back yet.')); return }
+    const most = Math.max(1, ...b.values.map(v => v.count))
+    const denominator = b.values.reduce((s, v) => s + v.count, 0) || 1
+    const list = h('div', { class: 'bar-list' })
+    for (const v of b.values) {
+      const fill = h('div')
+      fill.style.width = `${(v.count / most) * 100}%`
+      list.append(h('span', { class: 'bar-label', title: v.value }, v.value), h('span', { class: 'bar-count' }, v.count.toLocaleString()), h('span', { class: 'bar-pct' }, `${Math.round((v.count / denominator) * 100)}%`), h('div', { class: 'bar' }, fill))
+    }
+    breakdownBox.append(list)
+    if (models.length > 1) {
+      const numeric = b.kind === 'numeric'
+      const table = h('table', { class: 'grid-table breakdown-matrix' },
+        h('thead', {}, h('tr', {}, h('th', {}, 'Model'), h('th', { class: 'center' }, 'n'), ...(numeric ? [h('th', { class: 'center' }, 'median'), h('th', { class: 'center' }, 'mean')] : []), ...b.values.map(v => h('th', { class: 'center', title: v.value }, v.value.length > 18 ? `${v.value.slice(0, 17)}…` : v.value)))),
+        h('tbody', {}, ...b.byModel.map(m => h('tr', {}, h('td', { class: 'mono' }, m.model), h('td', { class: 'center' }, String(m.answered)),
+          ...(numeric ? [h('td', { class: 'center' }, m.median === undefined ? '' : formatNumber(m.median)), h('td', { class: 'center' }, m.mean === undefined ? '' : formatNumber(m.mean))] : []),
+          ...m.counts.map(c => h('td', { class: 'center' }, c ? String(c) : ''))))))
+      breakdownBox.append(table)
+    }
   }
 
   function openDetail(frozen: FrozenRun, row: CallRow, index: number): void {

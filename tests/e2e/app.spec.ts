@@ -149,6 +149,15 @@ test.describe('a spreadsheet', () => {
     await expect(page.locator('.final-table thead')).toContainText('frame')
     await expect(page.locator('.final-table tbody')).toContainText('civic')
     await expect(page.locator('.status.ok')).toHaveCount(2)
+    // The breakdown of an answer column: counts of each value over the rows shown.
+    await page.click('.final-table thead th:has-text("frame") .th-breakdown')
+    await expect(page.locator('.breakdown-box')).toContainText('2 of 2 calls have an answer')
+    await expect(page.locator('.breakdown-box .bar-list')).toContainText('civic')
+    await expect(page.locator('.breakdown-box .bar-count')).toHaveText(['2'])
+    await page.click('.final-table thead th:has-text("score") .th-breakdown')
+    await expect(page.locator('.breakdown-box')).toContainText('median 3')
+    await page.click('.breakdown-box button:has-text("Close")')
+    await expect(page.locator('.breakdown-box')).toBeHidden()
 
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('text=Completed spreadsheet')])
     expect(download.suggestedFilename()).toMatch(/completed.*\.xlsx$/)
@@ -386,6 +395,19 @@ test.describe('the rest of the surface', () => {
     await page.selectOption('.result-status', 'all')
     await page.fill('.result-search', 'stub-echo')
     await expect(page.locator('.final-table tbody tr')).toHaveCount(1)
+    await page.fill('.result-search', '')
+    // Sorting: the Model header ascending puts stub-echo first, descending stub-fail, a third click clears.
+    await page.click('.final-table thead .th-sort:has-text("Model")')
+    await expect(page.locator('.final-table tbody tr').first()).toContainText('stub-echo')
+    await page.click('.final-table thead .th-sort:has-text("Model")')
+    await expect(page.locator('.final-table thead .th-sort.active')).toContainText('▼')
+    await expect(page.locator('.final-table tbody tr').first()).toContainText('stub-fail')
+    await page.click('.final-table thead .th-sort:has-text("Model")')
+    await expect(page.locator('.final-table thead .th-sort.active')).toHaveCount(0)
+    // The status breakdown over both models.
+    await page.click('.final-table thead th:has-text("Status") .th-breakdown')
+    await expect(page.locator('.breakdown-box .bar-list')).toContainText('error')
+    await expect(page.locator('.breakdown-matrix tbody tr')).toHaveCount(2)
   })
 
   test('dark mode toggles the theme and persists', async ({ page }) => {

@@ -589,6 +589,27 @@ textarea.input {
   text-overflow: ellipsis;
 }
 
+/* Sortable headers and the per-column breakdown button. */
+.grid-table th .th-sort { all: unset; cursor: pointer; font: inherit; color: inherit; }
+.grid-table th .th-sort:hover, .grid-table th .th-sort.active { color: var(--text); }
+.th-breakdown { margin-left: 6px; padding: 0 4px; border: 1px solid var(--border); border-radius: 4px; background: none; color: var(--muted); font: 11px/1.4 inherit; cursor: pointer; }
+.th-breakdown:hover, .th-breakdown.active { color: var(--primary); border-color: var(--primary); }
+
+/* The breakdown panel: one hue, thin bars, counts and shares in text. */
+.breakdown-box { flex: none; margin: 0 0 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); max-height: 340px; overflow: auto; }
+.breakdown-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.breakdown-head .minibtn { margin-left: auto; }
+.breakdown-stats { margin: 0 0 8px; font-size: 12.5px; color: var(--muted); }
+.bar-list { display: grid; grid-template-columns: fit-content(240px) 56px 44px minmax(120px, 1fr); gap: 4px 10px; align-items: center; font-size: 12.5px; }
+.bar-list .bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-list .bar-count { text-align: right; font-variant-numeric: tabular-nums; }
+.bar-list .bar-pct { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.bar-list .bar { height: 10px; }
+.bar-list .bar > div { height: 100%; min-width: 2px; background: var(--primary); border-radius: 0 3px 3px 0; }
+.breakdown-matrix { width: auto; margin-top: 10px; }
+.breakdown-matrix th { position: static; }
+.breakdown-matrix td { font-variant-numeric: tabular-nums; font-size: 12.5px; }
+
 .status {
   font-weight: 700;
   text-transform: capitalize;
