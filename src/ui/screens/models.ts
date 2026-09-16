@@ -9,9 +9,10 @@ import { PRESETS, presetById } from '../../core/providers/presets'
 import type { CatalogModel, ProviderId, ResponseFormatChoice } from '../../core/types'
 import { loadRecent } from '../../state'
 import type { Actions } from '../actions'
-import { costInputs, costParts, modelCost, sortByCost } from '../costs'
+import { costInputs, costParts, modelCost, sortByCost, totalRange } from '../costs'
+import { formatUsd } from '../../core/pricing'
 import { h } from '../dom'
-import { caseCount, catalogCurrent, previewConstantBlock, visibleCatalog } from '../model'
+import { caseCount, catalogCurrent, previewConstantBlock, selectedCatalogModels, visibleCatalog } from '../model'
 import type { AppData, Store } from '../store'
 import type { Screen } from './screen'
 
@@ -61,9 +62,10 @@ export function buildModelsScreen(store: Store, actions: Actions): Screen {
   const listFacts = h('span', { class: 'muted small' })
   const selectedFacts = h('span', { class: 'muted small' })
   const clearSel = h('button', { class: 'minibtn', type: 'button' }, 'Clear')
-  const budget = h('input', { class: 'input budget-field', type: 'number', min: '0', step: '0.01', placeholder: '$' })
+  const budget = h('input', { class: 'input budget-field', type: 'number', min: '0', step: '0.01', 'aria-label': 'Budget for the whole run in dollars' })
   budget.value = '0.05'
-  const addUnder = h('button', { class: 'btn', type: 'button' }, 'Add all under')
+  const addUnder = h('button', { class: 'btn', type: 'button' }, 'Add them')
+  const budgetNote = h('span', { class: 'muted small budget-note' })
   const quick = h('div', { class: 'chips' })
 
   const layout = h('div', { class: 'models-layout' },
@@ -78,7 +80,11 @@ export function buildModelsScreen(store: Store, actions: Actions): Screen {
     h('div', { class: 'selected-col' },
       h('div', { class: 'pane-head' }, h('p', { class: 'section-label' }, 'Selected'), selectedFacts, clearSel),
       h('div', { class: 'selected-list-wrap' }, selected),
-      h('div', { class: 'budget-row' }, addUnder, budget, h('span', { class: 'muted small' }, 'per model for the whole run')),
+      h('div', { class: 'budget-row' },
+        h('span', { class: 'muted small' }, 'Add the cheapest models that together keep the whole run under'),
+        h('span', { class: 'budget-money' }, '$', budget),
+        addUnder,
+        budgetNote),
       h('div', { class: 'quick-add-block' }, quick),
     ),
   )
@@ -124,17 +130,29 @@ export function buildModelsScreen(store: Store, actions: Actions): Screen {
   manualAdd.addEventListener('click', addManual)
   manualId.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); addManual() } })
   clearSel.addEventListener('click', () => store.update(d => { d.state.selected = [] }))
+  // The budget is for the whole run: what is already selected counts, and
+  // the cheapest unselected models are added, in cost order, while the total
+  // (worst case, every answer at the output limit) stays under the figure.
   addUnder.addEventListener('click', () => {
     const data = current()
     const inputs = inputsFor(data)
     const limit = Number(budget.value) || 0
+    let added = 0
     store.update(d => {
-      for (const m of visibleCatalog(data)) {
+      const chosen = new Set(d.state.selected.map(s => s.id))
+      let total = 0
+      for (const m of data.session.catalog) if (chosen.has(m.id)) total += modelCost(m, inputs) ?? 0
+      for (const m of sortByCost(visibleCatalog(data).filter(m => !chosen.has(m.id)), inputs)) {
         const cost = modelCost(m, inputs)
-        if (cost !== null && cost <= limit && !d.state.selected.some(s => s.id === m.id)) d.state.selected.push({ id: m.id, settings: { extras: {} } })
+        if (cost === null || total + cost > limit) break
+        total += cost
+        added++
+        d.state.selected.push({ id: m.id, settings: { extras: {} } })
       }
+      budgetNote.textContent = added ? `Added ${added}.` : total >= limit ? 'Nothing added: the models already selected use the whole budget.' : 'Nothing added: no unselected model with a known price fits.'
     })
   })
+  budget.addEventListener('input', () => { budgetNote.textContent = '' })
 
   function current(): AppData { return { state: store.state, session: store.session } }
 
@@ -196,7 +214,10 @@ export function buildModelsScreen(store: Store, actions: Actions): Screen {
 
   function renderSelected(data: AppData): void {
     const ids = data.state.selected.map(s => s.id)
-    selectedFacts.textContent = ids.length ? String(ids.length) : ''
+    const range = totalRange(selectedCatalogModels(data), inputsFor(data))
+    selectedFacts.textContent = ids.length
+      ? `${ids.length} · about ${formatUsd(range.low)}–${formatUsd(range.high)} for the whole run${range.unknown ? ` (${range.unknown} without a price)` : ''}`
+      : ''
     clearSel.hidden = ids.length === 0
     const byId = new Map(data.session.catalog.map(m => [m.id, m]))
     selected.replaceChildren(...(ids.length ? ids.map(id => row(byId.get(id), id, 'selected', data)) : [h('p', { class: 'muted small' }, 'Nothing selected yet: pick models on the left.')]))

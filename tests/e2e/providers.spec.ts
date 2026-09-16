@@ -167,6 +167,26 @@ test.describe('OpenRouter (mocked)', () => {
     await expect(page.locator('.detail-dialog')).toContainText('$0.000123')
   })
 
+  test('the budget adds the cheapest models until the whole run would cost more than the figure', async ({ page }) => {
+    await mockProviders(page)
+    await toModels(page, 'Budget me')
+    await connect(page, 'openrouter', 'sk-or-test')
+    // Nothing fits under zero. Under five cents the two cheapest fit and Sonnet would push the total over.
+    await page.fill('.budget-field', '0')
+    await page.click('button:has-text("Add them")')
+    await expect(page.locator('.budget-note')).toContainText('Nothing added')
+    await expect(page.locator('.selected-col .model-row')).toHaveCount(0)
+    await page.fill('.budget-field', '0.05')
+    await page.click('button:has-text("Add them")')
+    await expect(page.locator('.budget-note')).toContainText('Added 2.')
+    await expect(page.locator('.selected-col .model-row')).toHaveCount(2)
+    await expect(page.locator('.selected-col .model-row .model-id')).toHaveText(['deepseek/deepseek-r1', 'openai/gpt-5'])
+    await expect(page.locator('.selected-col .pane-head')).toContainText('for the whole run')
+    // Already-selected models count against the budget: a second click adds nothing.
+    await page.click('button:has-text("Add them")')
+    await expect(page.locator('.budget-note')).toContainText('Nothing added')
+  })
+
   test('the per-model gear: a response-format override and extras reach the body; structural keys do not', async ({ page }) => {
     const seen = await mockProviders(page)
     await toModels(page, 'Gear test')

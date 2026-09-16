@@ -1036,13 +1036,17 @@ textarea.input {
   min-width: 0;
 }
 
-/* Button, slider and exact field on one line. */
+/* A sentence with the dollar field inline: "Add the cheapest models that
+   together keep the whole run under $[0.05] [Add them]". */
 .budget-row {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-top: 8px;
+  flex-wrap: wrap;
 }
+
+.budget-money { display: inline-flex; align-items: center; gap: 2px; color: var(--muted); font-size: 13px; }
 
 .budget-row .btn {
   flex: none;
@@ -1057,7 +1061,7 @@ textarea.input {
 
 .budget-field {
   flex: none;
-  width: 92px;
+  width: 80px;
 }
 
 .quick-add-block {
