@@ -187,7 +187,7 @@ test.describe('a spreadsheet', () => {
   })
 })
 
-test('keeps the provider secret out of password-manager heuristics until the Models step', async ({ page }) => {
+test('keeps the provider secret out of password-manager heuristics', async ({ page }) => {
   const key = page.locator('[data-field="api-key"]')
   await expect(key).toHaveAttribute('type', 'text')
   await expect(key).toHaveAttribute('autocomplete', 'off')
@@ -197,7 +197,34 @@ test('keeps the provider secret out of password-manager heuristics until the Mod
   await next(page)
   await page.fill('textarea[data-field="prompt"]', 'Classify this request')
   await next(page, 2)
-  await expect(key).toHaveAttribute('type', 'password')
+  await expect(key).toHaveAttribute('type', 'text')
+})
+
+test('starting a new flow does not carry answer fields or chosen models into it', async ({ page }) => {
+  await next(page)
+  await page.fill('textarea[data-field="prompt"]', 'Classify this request')
+  await next(page)
+  await page.click('button.chip:has-text("Specific fields")')
+  await next(page)
+  await connectStub(page)
+  await pickModel(page, 'stub-echo')
+  await expect(page.locator('.selected-col .model-row')).toHaveCount(1)
+
+  await page.click('text=← Back')
+  await page.click('text=← Back')
+  await page.click('text=← Back')
+  await page.click('button.chip[data-flow="sheet"]')
+  await page.click('button.chip[data-flow="single"]')
+  await next(page)
+  await page.fill('textarea[data-field="prompt"]', 'A fresh question')
+  await next(page)
+
+  await expect(page.locator('.field-entry')).toHaveCount(0)
+  await page.click('.step.active .more-options summary')
+  await expect(page.locator('.step.active .more-options input[type="checkbox"]').nth(1)).not.toBeChecked()
+  await expect(page.locator('.step.active .more-options select').first()).toHaveValue('')
+  await next(page)
+  await expect(page.locator('.selected-col .model-row')).toHaveCount(0)
 })
 
 test.describe('resilience', () => {

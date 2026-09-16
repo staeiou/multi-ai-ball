@@ -22,11 +22,11 @@ export function buildModelsScreen(store: Store, actions: Actions): Screen {
   const customBase = h('input', { class: 'input', placeholder: 'Base URL, e.g. http://localhost:11434 or https://your.llm.example' })
   customBase.value = store.state.customBase
   const customBaseField = h('label', { class: 'field' }, h('span', {}, 'Base URL'), customBase)
-  // Password managers tend to scan every mounted screen, including hidden
-  // wizard stages. This starts as text and app.ts promotes it to password only
-  // while this stage is visible; the provider key is never a login credential.
+  // This is intentionally never a password input: browsers treat a real
+  // password field as a login credential and offer to save it on step change.
+  // CSS masks the provider secret without advertising it to credential tools.
   const keyInput = h('input', {
-    class: 'input',
+    class: 'input secret-input',
     type: 'text',
     name: 'provider-api-key',
     'data-field': 'api-key',
