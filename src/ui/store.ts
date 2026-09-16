@@ -20,6 +20,8 @@ export interface Session {
   sheetSource: { name: string; bytes: number; sha256: string } | null
   sheetError: string | null
   loadingSheet: boolean
+  /** An authored draft was recovered when this browser session opened. */
+  restoredDraft: boolean
   /** True only when the sheet was brought back from a prior browser visit. */
   restoredSheet: boolean
   /** User edits to the inferred partition; null = inferred from the sheet. */
@@ -55,6 +57,7 @@ export function defaultSession(state: PersistedState): Session {
     sheetSource: null,
     sheetError: null,
     loadingSheet: false,
+    restoredDraft: Boolean(state.prompt.trim() || state.system.trim() || state.sweep.length || Object.keys(state.roles).length || state.contract.fields?.length || state.selected.length),
     restoredSheet: false,
     partitionOverride: null,
     runId: null,

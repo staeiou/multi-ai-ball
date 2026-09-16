@@ -72,6 +72,7 @@ export async function freezeRun(input: FreezeInput): Promise<FrozenRun> {
 
   const referenced = promptPlaceholderNames(input.itemTemplate, input.systemTemplate)
   const inputColumns = new Set(columnsWithRole(input.roles, 'input'))
+  const forwardColumns = Object.entries(input.roles).filter(([, role]) => role !== 'metadata').map(([column]) => column)
   const carried = input.source === null ? referenced : referenced.filter(name => inputColumns.has(name))
 
   const cases = input.partition.targets.map(ordinal => {
@@ -80,7 +81,8 @@ export async function freezeRun(input: FreezeInput): Promise<FrozenRun> {
     for (const name of carried) {
       if (Object.prototype.hasOwnProperty.call(row, name)) bindings[name] = normalizeBindingValue(row[name])
     }
-    return { ordinal, label: input.label ? input.label(ordinal) : input.source ? `Row ${ordinal + 1}` : 'Input', bindings }
+    const forward = Object.fromEntries(forwardColumns.map(column => [column, row[column]]))
+    return { ordinal, label: input.label ? input.label(ordinal) : input.source ? `Row ${ordinal + 1}` : 'Input', bindings, forward }
   })
 
   const constantBlock = compileConstantBlock({
@@ -113,6 +115,7 @@ export async function freezeRun(input: FreezeInput): Promise<FrozenRun> {
     roles: input.roles,
     partition: input.partition,
     cases,
+    forwardColumns,
     systemTemplate: input.systemTemplate,
     itemTemplate: input.itemTemplate,
     constantBlock,

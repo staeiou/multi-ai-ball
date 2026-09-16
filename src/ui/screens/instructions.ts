@@ -5,7 +5,7 @@
 
 import { renderPromptTemplate } from '../../core/template'
 import { h } from '../dom'
-import { applyGuesses, caseCount, currentPartition, currentRows, instructionProblems, previewConstantBlock } from '../model'
+import { applyGuesses, caseCount, currentPartition, currentRows, instructionProblems } from '../model'
 import type { AppData, Store } from '../store'
 import type { Screen } from './screen'
 
@@ -24,7 +24,6 @@ export function buildInstructionsScreen(store: Store): Screen {
   const resetAuto = h('button', { class: 'minibtn', type: 'button' }, 'Back to automatic')
   const more = h('details', { class: 'schema-preview more-options' }, h('summary', {}, 'More options'))
   const previewBox = h('div', { class: 'sheet-preview' })
-  const constantPreview = h('details', { class: 'schema-preview' }, h('summary', {}, 'The examples and answer format every call carries'), h('pre', { class: 'constant-block' }))
   const problems = h('p', { class: 'wizard-blocker inline-blocker' })
 
   const el = h('section', { class: 'card stage-card' },
@@ -36,7 +35,6 @@ export function buildInstructionsScreen(store: Store): Screen {
     more,
     problems,
     previewBox,
-    constantPreview,
   )
 
   let caret = prompt.value.length
@@ -93,7 +91,7 @@ export function buildInstructionsScreen(store: Store): Screen {
       system.placeholder = 'e.g. You are a patient science teacher. Answer for a 12-year-old.'
       promptField.hidden = false
       systemField.hidden = true
-      more.replaceChildren(h('summary', {}, 'More options'), systemField)
+      more.replaceChildren(h('summary', {}, 'Optional background instructions (system prompt)'), systemField)
       systemField.hidden = false
       generatedNote.textContent = ''
       takeOver.hidden = true
@@ -133,9 +131,6 @@ export function buildInstructionsScreen(store: Store): Screen {
     const list = instructionProblems(data)
     problems.hidden = list.length === 0
     problems.textContent = list.join(' · ')
-    const block = previewConstantBlock(data)
-    constantPreview.hidden = block.length === 0
-    constantPreview.querySelector('pre')!.textContent = block
   }
 
   return {

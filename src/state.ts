@@ -78,8 +78,10 @@ export function defaultState(): PersistedState {
     hideFreeModels: true,
     zdrOnly: false,
     splitRatio: 0.5,
-    contract: { fields: [], rationaleFirst: false, rationaleSpec: '', strictJson: true },
-    parserId: 'json-unstack',
+    // A new one-question draft is plain text. Sheet guesses turn on JSON and
+    // the column parser only after the user has chosen output columns.
+    contract: { fields: [], rationaleFirst: false, rationaleSpec: '', strictJson: false },
+    parserId: null,
     dark: false,
     keyRemember: false,
     lastRunId: null,

@@ -20,6 +20,7 @@ import { pushRecent, saveKey } from '../state'
 import { applyGuesses, catalogKey, currentBaseUrl, currentPartition, currentRows, selectedCatalogModels } from './model'
 import { guessRoles } from '../core/guess'
 import type { ColumnRole } from '../core/types'
+import type { Flow } from '../state'
 import type { Store } from './store'
 
 export class Actions {
@@ -82,6 +83,38 @@ export class Actions {
 
   // --- data ------------------------------------------------------------------------
 
+  /** A flow-picker click means "start a new draft", not "reinterpret the old
+   * draft as another kind of task". Provider preferences stay; task content,
+   * answer shape, and picked models do not cross that boundary. */
+  startNewFlow(flow: Flow): void {
+    if (flow === 'sheet') void clearCurrentSheet()
+    this.store.update(d => {
+      d.state.flow = flow
+      d.state.prompt = ''
+      d.state.system = ''
+      d.state.sweep = []
+      d.state.roles = {}
+      d.state.promptAuto = true
+      d.state.contractAuto = true
+      d.state.contract = { fields: [], rationaleFirst: false, rationaleSpec: '', strictJson: false }
+      d.state.parserId = null
+      d.state.selected = []
+      d.state.lastRunId = null
+      d.session.sheet = null
+      d.session.sheetSource = null
+      d.session.sheetError = null
+      d.session.partitionOverride = null
+      d.session.restoredSheet = false
+      d.session.restoredDraft = false
+      d.session.runId = null
+      d.session.frozen = null
+      d.session.rows = []
+      d.session.sourceRows = null
+      d.session.sourceColumns = null
+      d.session.statusLine = ''
+    })
+  }
+
   async loadSheet(file: File): Promise<void> {
     this.store.update(d => { d.session.loadingSheet = true; d.session.sheetError = null })
     try {
@@ -93,8 +126,12 @@ export class Actions {
         d.session.partitionOverride = null
         d.session.loadingSheet = false
         d.session.restoredSheet = false
+        d.session.restoredDraft = false
         // A fresh sheet gets fresh guesses; the user changes them by ticking boxes.
-        d.state.roles = guessRoles(parsed.rows, parsed.columns)
+        const guessed = guessRoles(parsed.rows, parsed.columns)
+        // Every source column travels with its result by default. `reference`
+        // means carry forward only; it is never sent to a provider.
+        d.state.roles = Object.fromEntries(parsed.columns.map(column => [column, guessed[column] === 'metadata' ? 'reference' : guessed[column]!]))
         d.state.flow = 'sheet'
         d.state.promptAuto = true
         d.state.contractAuto = true
@@ -116,6 +153,7 @@ export class Actions {
       d.session.sheetError = null
       d.session.partitionOverride = null
       d.session.restoredSheet = false
+      d.session.restoredDraft = false
       d.state.roles = {}
       d.state.promptAuto = true
       d.state.contractAuto = true
@@ -127,6 +165,24 @@ export class Actions {
       d.state.roles[column] = role
       d.session.partitionOverride = null
       applyGuesses(d)
+    })
+  }
+
+  setForward(column: string, forward: boolean): void {
+    this.store.update(d => {
+      const role = d.state.roles[column]
+      // Inputs and outputs are necessarily carried with the result.
+      if (role === 'input' || role === 'output') return
+      d.state.roles[column] = forward ? 'reference' : 'metadata'
+    })
+  }
+
+  setAllForward(columns: readonly string[], forward: boolean): void {
+    this.store.update(d => {
+      for (const column of columns) {
+        const role = d.state.roles[column]
+        if (role !== 'input' && role !== 'output') d.state.roles[column] = forward ? 'reference' : 'metadata'
+      }
     })
   }
 

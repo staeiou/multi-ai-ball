@@ -83,7 +83,8 @@ export function parsedColumns(run: FrozenRun, rows: readonly CallRow[]): ExportC
 
 export function buildRows(run: FrozenRun, rows: readonly CallRow[]): { columns: ExportColumn[]; rows: ExportRow[] } {
   const parsed = parsedColumns(run, rows)
-  const columns = [...BASE_COLUMNS, ...parsed, ...TAIL_COLUMNS]
+  const forward = (run.forwardColumns ?? []).map(column => ({ key: `source:${column}`, label: column }))
+  const columns = [...BASE_COLUMNS, ...forward, ...parsed, ...TAIL_COLUMNS]
   const isUnstack = run.parserId === 'json-unstack'
   const enumColumns = new Set((run.contract?.fields ?? []).filter(f => f.type === 'enum' || f.type === 'multi-enum').map(f => `parsed_${f.name}`))
 
@@ -114,6 +115,7 @@ export function buildRows(run: FrozenRun, rows: readonly CallRow[]): { columns: 
       bindings: JSON.stringify(c.bindings),
       raw: row.raw ?? null,
     }
+    for (const column of run.forwardColumns ?? []) record[`source:${column}`] = scalarCell(c.forward?.[column])
     if (isUnstack) {
       const obj = parsedObject(row)
       for (const column of parsed) record[column.key] = extractUnstackCell(obj, column.key)
@@ -243,11 +245,36 @@ export function toJSONL(rows: readonly ExportRow[], columns: readonly ExportColu
   return rows.map(row => JSON.stringify(Object.fromEntries(columns.map(c => [c.label, row[c.key] ?? null])))).join('\n')
 }
 
+/** Excel rejects cells longer than 32,767 characters. Leave headroom and put
+ * the remainder in adjacent, clearly named columns rather than losing it. */
+export const EXCEL_CELL_CHUNK = 32700
+
+function excelChunks(value: ExportValue): ExportValue[] {
+  if (typeof value !== 'string' || value.length <= EXCEL_CELL_CHUNK) return [value]
+  const chunks: string[] = []
+  for (let start = 0; start < value.length; start += EXCEL_CELL_CHUNK) {
+    let end = Math.min(value.length, start + EXCEL_CELL_CHUNK)
+    // Do not split a surrogate pair across two Excel cells.
+    if (end < value.length && /[\uD800-\uDBFF]/.test(value[end - 1]!)) end--
+    chunks.push(value.slice(start, end))
+    if (end === start) end++
+    start = end - EXCEL_CELL_CHUNK
+  }
+  return chunks
+}
+
 export function toXLSX(sheets: Array<{ name: string; rows: readonly ExportRow[]; columns: readonly ExportColumn[] }>): ArrayBuffer {
   const book = XLSX.utils.book_new()
   const used = new Set<string>()
   for (const sheet of sheets) {
-    const aoa = [sheet.columns.map(c => c.label), ...sheet.rows.map(row => sheet.columns.map(c => row[c.key] ?? null))]
+    const expanded = sheet.columns.flatMap(column => {
+      const count = Math.max(1, ...sheet.rows.map(row => excelChunks(row[column.key] ?? null).length))
+      return Array.from({ length: count }, (_, index) => ({ column, index }))
+    })
+    const aoa = [
+      expanded.map(({ column, index }) => index === 0 ? column.label : `${column.label}.continued.${index}`),
+      ...sheet.rows.map(row => expanded.map(({ column, index }) => excelChunks(row[column.key] ?? null)[index] ?? null)),
+    ]
     let name = sheet.name.replace(/[\\/?*[\]:]/g, '_').slice(0, 31) || 'Sheet'
     let n = 2
     while (used.has(name)) name = `${name.slice(0, 28)}_${n++}`

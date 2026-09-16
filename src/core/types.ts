@@ -182,8 +182,11 @@ export interface FrozenRun {
   source: { name: string; bytes: number; sha256: string; rowCount: number; sheet?: string } | null
   roles: Record<string, ColumnRole>
   partition: Partition
-  /** Target rows only, referenced input columns only, values as prompt text. */
-  cases: Array<{ ordinal: number; label: string; bindings: Record<string, string> }>
+  /** Target rows only. Bindings go to the provider; forward values travel only
+   * into result records and exports. */
+  cases: Array<{ ordinal: number; label: string; bindings: Record<string, string>; forward?: Record<string, unknown> }>
+  /** Original columns retained in the long result table. */
+  forwardColumns?: string[]
   systemTemplate: string
   itemTemplate: string
   /** Rendered once: worked examples + output-format prose. Appended to the

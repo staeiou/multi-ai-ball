@@ -10,7 +10,7 @@ import type { ContractField, ContractFieldType } from '../../core/types'
 import { loadTemplates, saveTemplates } from '../../state'
 import type { SavedTemplate } from '../../state'
 import { h } from '../dom'
-import { applyGuesses, currentRows } from '../model'
+import { applyGuesses, currentRows, previewConstantBlock } from '../model'
 import type { AppData, Store } from '../store'
 import type { Screen } from './screen'
 
@@ -30,6 +30,7 @@ export function buildOutputScreen(store: Store, onTemplateLoaded: () => void): S
   const fieldsBox = h('div', { class: 'field-table' })
   const errors = h('div', { class: 'contract-errors' })
   const whatModelSees = h('details', { class: 'schema-preview' }, h('summary', {}, 'What the model is told about the format'), h('pre', {}))
+  const callPreview = h('details', { class: 'schema-preview' }, h('summary', {}, 'What every call carries: worked examples and answer format'), h('pre', { class: 'constant-block' }))
   const rationaleFirst = h('input', { type: 'checkbox' })
   const rationaleSpec = h('input', { class: 'input', placeholder: 'What the reasoning should cover (optional)' })
   const strictJson = h('input', { type: 'checkbox' })
@@ -60,6 +61,7 @@ export function buildOutputScreen(store: Store, onTemplateLoaded: () => void): S
     fieldsBox,
     errors,
     whatModelSees,
+    callPreview,
     more,
   )
 
@@ -211,6 +213,12 @@ export function buildOutputScreen(store: Store, onTemplateLoaded: () => void): S
 
   function refresh(data: AppData): void {
     const { state } = data
+    // Mode buttons mutate state directly; keep the technical controls truthful
+    // even though this screen stays mounted between wizard steps.
+    rationaleFirst.checked = state.contract.rationaleFirst ?? false
+    rationaleSpec.value = state.contract.rationaleSpec ?? ''
+    strictJson.checked = state.contract.strictJson !== false
+    parser.value = state.parserId ?? ''
     const isSheet = state.flow === 'sheet'
     heading.textContent = isSheet
       ? 'What should the model put in each column it fills in? This is pre-filled from the values already in those columns.'
@@ -229,6 +237,9 @@ export function buildOutputScreen(store: Store, onTemplateLoaded: () => void): S
     const prose = renderContractProse(state.contract)
     whatModelSees.hidden = !prose
     whatModelSees.querySelector('pre')!.textContent = prose ? `${prose}\n\n(Where the model supports it, this JSON schema is also enforced:)\n${JSON.stringify(ctx?.schema ?? null, null, 2)}` : ''
+    const block = previewConstantBlock(data)
+    callPreview.hidden = block.length === 0
+    callPreview.querySelector('pre')!.textContent = block
   }
 
   renderTemplates()

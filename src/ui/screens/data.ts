@@ -19,23 +19,23 @@ import type { Screen } from './screen'
 export function buildDataScreen(store: Store, actions: Actions): Screen {
   const flowTabs = h('div', { class: 'chips flow-tabs' })
   const intro = h('p', { class: 'muted' })
+  const restoredDraftNotice = h('div', { class: 'restored-sheet-notice' })
   const sheetInput = h('input', { type: 'file', accept: '.csv,.tsv,.xlsx,.xls,.json,.jsonl,.ndjson' })
   sheetInput.hidden = true
   const uploadBtn = h('button', { class: 'btn primary', type: 'button' }, 'Upload a spreadsheet…')
   const sheetFacts = h('span', { class: 'muted small' })
   const restoredSheetNotice = h('div', { class: 'restored-sheet-notice' })
   const previewBox = h('div', { class: 'data-preview' })
-  const readBox = h('div', { class: 'question-box' })
-  const fillBox = h('div', { class: 'question-box' })
-  const keptBox = h('p', { class: 'muted small' })
+  const columnBox = h('div', { class: 'question-box column-role-grid' })
   const partitionBox = h('div', { class: 'partition-box' })
   const sweepBox = h('div', { class: 'sweep-box' })
   const problems = h('p', { class: 'wizard-blocker inline-blocker' })
 
-  const sheetSection = h('div', { class: 'sheet-section' }, restoredSheetNotice, h('div', { class: 'row' }, uploadBtn, sheetInput, sheetFacts), previewBox, readBox, fillBox, keptBox, partitionBox)
+  const sheetSection = h('div', { class: 'sheet-section' }, restoredSheetNotice, h('div', { class: 'row' }, uploadBtn, sheetInput, sheetFacts), previewBox, columnBox, partitionBox)
   const el = h('section', { class: 'card stage-card' },
     h('div', { class: 'stage-heading' }, h('h2', {}, 'Your data'), h('p', {}, 'What are you asking the models about?')),
     flowTabs,
+    restoredDraftNotice,
     intro,
     sheetSection,
     sweepBox,
@@ -56,10 +56,15 @@ export function buildDataScreen(store: Store, actions: Actions): Screen {
   function renderFlowTabs(data: AppData): void {
     flowTabs.replaceChildren(...FLOWS.map(([flow, label]) => {
       const chip = h('button', { class: `chip ${data.state.flow === flow ? 'active' : ''}`, type: 'button', 'data-flow': flow }, label)
-      chip.addEventListener('click', () => store.update(d => { d.state.flow = flow }))
+      chip.addEventListener('click', () => actions.startNewFlow(flow))
       return chip
     }))
     intro.textContent = FLOWS.find(([f]) => f === data.state.flow)?.[2] ?? ''
+    // A restored sheet has its own, more useful notice with a clear action.
+    restoredDraftNotice.hidden = !data.session.restoredDraft || data.session.restoredSheet
+    if (!restoredDraftNotice.hidden) restoredDraftNotice.replaceChildren(
+      h('span', {}, 'This is the draft from your previous visit. Continue it, or choose a starting point above to begin a new draft.'),
+    )
     sheetSection.hidden = data.state.flow !== 'sheet'
     sweepBox.hidden = data.state.flow !== 'sweep'
   }
@@ -76,7 +81,7 @@ export function buildDataScreen(store: Store, actions: Actions): Screen {
       )
     }
     sheetFacts.textContent = loadingSheet ? 'Reading…' : sheetError ?? (sheet ? `${sheet.name}: ${sheet.rows.length.toLocaleString()} rows, ${sheet.columns.length} columns` : 'Excel or CSV (also TSV, JSON, JSONL). The first row should hold the column names.')
-    if (!sheet) { previewBox.replaceChildren(); readBox.replaceChildren(); fillBox.replaceChildren(); keptBox.textContent = ''; partitionBox.replaceChildren(); sheetKey = ''; return }
+    if (!sheet) { previewBox.replaceChildren(); columnBox.replaceChildren(); partitionBox.replaceChildren(); sheetKey = ''; return }
     const { rows, roles } = currentRows(data)
     const key = JSON.stringify([sheet.name, rows.length, sheet.columns, roles, data.session.partitionOverride])
     if (key === sheetKey) return
@@ -90,12 +95,11 @@ export function buildDataScreen(store: Store, actions: Actions): Screen {
     table.append(body)
     previewBox.replaceChildren(h('p', { class: 'muted small' }, rows.length > 5 ? `The first 5 of ${rows.length.toLocaleString()} rows:` : 'Your rows:'), h('div', { class: 'sheet-table-wrap' }, table))
 
-    const inputs = columnsWithRole(roles, 'input')
     const outputs = columnsWithRole(roles, 'output')
-    readBox.replaceChildren(
-      h('h3', {}, '1. Which column should the model read?'),
-      h('p', { class: 'muted small' }, 'Usually the text you want judged, scored or summarized. Pick more than one if the model needs several.'),
-      checklist(data, sheet.columns, 'input', inputs, roles),
+    columnBox.replaceChildren(
+      h('h3', {}, 'Choose what happens to each column'),
+      h('p', { class: 'muted small' }, 'Send to model shares a column with the model. Model answers is where its answer goes. Keep in results carries the original value alongside each answer; it is never sent to a model. Columns sent to or answered by the model are always kept.'),
+      columnControls(sheet.columns, roles),
     )
     const newColumn = h('input', { class: 'input new-column', placeholder: 'e.g. sentiment' })
     const addNew = h('button', { class: 'btn', type: 'button' }, 'Add a new column')
@@ -108,16 +112,7 @@ export function buildDataScreen(store: Store, actions: Actions): Screen {
     addNew.addEventListener('click', add)
     newColumn.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); add() } })
     const newOutputs = outputs.filter(c => !sheet.columns.includes(c))
-    const fillChildren: Array<HTMLElement | null> = [
-      h('h3', {}, '2. Which column should the model fill in?'),
-      h('p', { class: 'muted small' }, 'A column with some rows already filled in works best: those rows show the model what you want, and it fills in the rest. Or add a brand-new column for the answer.'),
-      checklist(data, sheet.columns, 'output', outputs, roles),
-      newOutputs.length ? h('div', { class: 'chips' }, h('span', { class: 'muted small' }, 'New columns the model will fill:'), ...newOutputs.map(c => { const chip = h('button', { class: 'chip active', type: 'button', title: 'Remove' }, `${c} ×`); chip.addEventListener('click', () => removeRole(c)); return chip })) : null,
-      h('div', { class: 'row' }, newColumn, addNew),
-    ]
-    fillBox.replaceChildren(...fillChildren.filter((n): n is HTMLElement => n !== null))
-    const kept = sheet.columns.filter(c => roles[c] === 'metadata' || roles[c] === 'reference')
-    keptBox.textContent = kept.length ? `The other ${kept.length} column${kept.length === 1 ? '' : 's'} (${kept.slice(0, 6).join(', ')}${kept.length > 6 ? ', …' : ''}) stay in your spreadsheet untouched and are never sent to a model.` : ''
+    columnBox.append(newOutputs.length ? h('div', { class: 'chips' }, h('span', { class: 'muted small' }, 'New columns to fill:'), ...newOutputs.map(c => { const chip = h('button', { class: 'chip active', type: 'button' }, `${c} ×`); chip.addEventListener('click', () => removeRole(c)); return chip })) : h('div'), h('div', { class: 'row' }, newColumn, addNew))
 
     const partition = currentPartition(data)
     partitionBox.replaceChildren()
@@ -136,23 +131,27 @@ export function buildDataScreen(store: Store, actions: Actions): Screen {
     partitionBox.append(h('p', {}, ...parts), editor)
   }
 
-  function checklist(data: AppData, columns: string[], role: ColumnRole, chosen: string[], roles: Record<string, ColumnRole>): HTMLElement {
-    const { rows } = currentRows(data)
-    const list = h('div', { class: 'column-checklist' })
+  function columnControls(columns: string[], roles: Record<string, ColumnRole>): HTMLElement {
+    const grid = h('div', { class: 'column-controls' })
+    const allOn = h('button', { class: 'minibtn', type: 'button' }, 'Keep all')
+    const allOff = h('button', { class: 'minibtn', type: 'button' }, 'Keep only model columns')
+    allOn.addEventListener('click', () => actions.setAllForward(columns, true))
+    allOff.addEventListener('click', () => actions.setAllForward(columns, false))
+    grid.append(h('div', { class: 'column-control-head' }, h('span', {}, 'Column'), h('span', {}, 'Send to model'), h('span', {}, 'Model answers'), h('span', {}, 'Keep in results'), h('span', { class: 'row' }, allOn, allOff)))
     for (const column of columns) {
-      const facts = columnFacts(rows, column)
-      const box = h('input', { type: 'checkbox', 'data-role': role, 'data-column': column })
-      box.checked = chosen.includes(column)
-      box.addEventListener('change', () => {
-        if (box.checked) setRole(column, role)
-        else setRole(column, 'metadata')
-      })
-      const filled = facts.blank === 0 ? 'every row filled' : facts.filled === 0 ? 'empty' : `${facts.filled} of ${rows.length} filled`
-      const kind = facts.filled === 0 ? '' : facts.numeric ? 'numbers' : facts.distinct <= 8 && facts.avgLength < 40 ? `${facts.distinct} distinct values: ${facts.sample.slice(0, 4).join(', ')}` : facts.avgLength > 120 ? 'long text' : 'text'
-      const otherRole = roles[column] !== role && roles[column] !== 'metadata' && roles[column] !== 'reference' ? ` · currently: ${roles[column] === 'input' ? 'read by the model' : 'filled in by the model'}` : ''
-      list.append(h('label', { class: 'column-choice' }, box, h('span', { class: 'column-name' }, column), h('span', { class: 'muted small' }, ` ${filled}${kind ? ` · ${kind}` : ''}${otherRole}`)))
+      const role = roles[column] ?? 'metadata'
+      const facts = columnFacts(currentRows({ state: store.state, session: store.session }).rows, column)
+      const completion = facts.blank === 0 ? 'all filled' : facts.filled === 0 ? 'empty' : `${facts.filled} of ${facts.filled + facts.blank} filled`
+      const kind = facts.filled === 0 ? '' : facts.numeric ? 'numbers' : facts.avgLength > 120 ? 'long text' : facts.distinct <= 8 ? `${facts.distinct} distinct values` : 'text'
+      const read = h('input', { type: 'checkbox', 'data-role': 'input', 'data-column': column }); read.checked = role === 'input'
+      const fill = h('input', { type: 'checkbox', 'data-role': 'output', 'data-column': column }); fill.checked = role === 'output'
+      const forward = h('input', { type: 'checkbox', 'data-role': 'forward', 'data-column': column }); forward.checked = role !== 'metadata'; forward.disabled = role === 'input' || role === 'output'
+      read.addEventListener('change', () => setRole(column, read.checked ? 'input' : (forward.checked ? 'reference' : 'metadata')))
+      fill.addEventListener('change', () => setRole(column, fill.checked ? 'output' : (forward.checked ? 'reference' : 'metadata')))
+      forward.addEventListener('change', () => actions.setForward(column, forward.checked))
+      grid.append(h('div', { class: 'column-control-row' }, h('span', {}, h('span', { class: 'column-name' }, column), h('span', { class: 'muted small column-facts' }, `${completion}${kind ? ` · ${kind}` : ''}`)), read, fill, forward, h('span', { class: 'muted small' }, role === 'input' ? 'sent to model' : role === 'output' ? 'model answer' : role === 'reference' ? 'kept with results' : 'omitted')))
     }
-    return list
+    return grid
   }
 
   function setRole(column: string, role: ColumnRole): void {

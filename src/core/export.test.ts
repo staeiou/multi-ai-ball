@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildCompletedDatasets, buildRows, toCSV, toJSONL } from './export'
+import * as XLSX from 'xlsx'
+import { buildCompletedDatasets, buildRows, EXCEL_CELL_CHUNK, toCSV, toJSONL, toXLSX } from './export'
 import { freezeRun } from './freeze'
 import { columnsOf, inferPartition } from './partition'
 import { presetById } from './providers/presets'
@@ -69,5 +70,16 @@ describe('completed datasets', () => {
     const [sheet] = buildCompletedDatasets(run, [okRow(0, { label: 'a' }), okRow(1, { label: 'b' })], ROWS.slice(0, 2), columnsOf(ROWS))
     expect(sheet!.columns).toContain('model_label')
     expect(sheet!.rows[1]!.model_label).toBe('b')
+  })
+})
+
+describe('Excel writing', () => {
+  it('splits over-limit cells into continued columns without losing text', () => {
+    const value = 'x'.repeat(EXCEL_CELL_CHUNK + 12)
+    const file = toXLSX([{ name: 'Results', columns: [{ key: 'response', label: 'Response' }], rows: [{ response: value }] }])
+    const book = XLSX.read(file, { type: 'array' })
+    const rows = XLSX.utils.sheet_to_json(book.Sheets.Results!, { header: 1 }) as string[][]
+    expect(rows[0]).toEqual(['Response', 'Response.continued.1'])
+    expect(rows[1]![0]! + rows[1]![1]!).toBe(value)
   })
 })
