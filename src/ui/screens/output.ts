@@ -130,7 +130,6 @@ export function buildOutputScreen(store: Store, onTemplateLoaded: () => void): S
       fieldsBox.append(h('p', { class: 'muted' }, 'The model answers in its own words and the whole text is kept.' + (data.state.flow === 'sheet' ? ' For a spreadsheet you usually want specific fields so each one becomes a column.' : '')))
       return
     }
-    fieldsBox.append(h('div', { class: 'field-table-head' }, h('span', {}, 'Field'), h('span', {}, 'Kind of answer'), h('span', {}, 'Details')))
     fields.forEach((field, index) => {
       const name = h('input', { class: 'input', placeholder: 'e.g. sentiment' })
       name.value = field.name
@@ -172,7 +171,7 @@ export function buildOutputScreen(store: Store, onTemplateLoaded: () => void): S
         h('label', { class: 'param-field' }, h('span', {}, 'Kind of answer'), type),
         remove,
         detail,
-        h('label', { class: 'param-field' }, h('span', {}, 'Meaning'), description),
+        h('label', { class: 'param-field meaning-field' }, h('span', {}, 'Meaning'), description),
       ))
     })
     const add = h('button', { class: 'btn', type: 'button' }, '+ Add a field')

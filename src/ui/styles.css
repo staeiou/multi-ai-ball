@@ -477,7 +477,6 @@ textarea.input {
   gap: 8px;
 }
 
-.field-table-head { display: grid; grid-template-columns: 1fr 130px 1fr; gap: 8px; padding: 0 0 5px; color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
 .choice-detail { display: grid; gap: 7px; width: 100%; }.choice-row { display: grid; grid-template-columns: minmax(140px, .8fr) minmax(200px, 1.5fr) 30px; gap: 7px; align-items: center; }.choice-remove-spacer { width: 30px; height: 1px; }.parser-notice { margin: 8px 0 0; padding: 8px 10px; border-left: 3px solid var(--primary); background: var(--primary-soft); color: var(--text); font-size: 12.5px; }
 
 .field-entry {
@@ -486,6 +485,14 @@ textarea.input {
   grid-template-columns: 1fr 130px auto;
   align-items: start;
 }
+
+/* One field reads as one block: a strong rule between fields, a light one
+   between a field's details and its Meaning line, and a strong one before
+   the add button. Each entry labels its own controls, so no header row. */
+.field-entry + .field-entry { margin-top: 8px; padding-top: 14px; border-top: 2px solid var(--border-strong); }
+.field-entry .meaning-field { grid-column: 1 / -1; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
+.field-table > .btn { justify-self: start; margin-top: 8px; padding-top: 14px; border-top: 0; }
+.field-table > .field-entry:last-of-type { padding-bottom: 14px; border-bottom: 2px solid var(--border-strong); }
 
 .field-entry .field-detail {
   grid-column: 1 / -1;
