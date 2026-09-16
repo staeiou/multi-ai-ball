@@ -1196,6 +1196,15 @@ textarea.readonly { background: var(--bg); color: var(--muted); }
 /* --- results card fills the step so the table wrap is the only scroller; the
    sticky header then sticks to something. --- */
 .results-stage { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+
+/* Single-prompt instructions: the stage fills the step, the prompt field takes
+   what is left after the heading and the optional-instructions box, and the
+   textarea scrolls internally once the text is taller than that. Opening the
+   optional box shrinks the prompt rather than scrolling the page. */
+.instructions-stage.fill { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.instructions-stage.fill > * { flex: none; }
+.instructions-stage.fill > .prompt-field { flex: 1; min-height: 0; grid-template-rows: auto minmax(0, 1fr); }
+.instructions-stage.fill > .prompt-field textarea { height: auto; min-height: 120px; resize: none; overflow: auto; }
 .results-stage .final-table-wrap { flex: 1; min-height: 240px; max-height: none; overflow: auto; }
 .final-table thead th { position: sticky; top: 0; z-index: 2; background: var(--card); box-shadow: inset 0 -1px 0 var(--border-strong); }
 /* --- variations editor --- */

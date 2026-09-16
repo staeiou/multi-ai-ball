@@ -17,7 +17,7 @@ export function buildInstructionsScreen(store: Store): Screen {
   const promptLabel = h('span', {}, 'Prompt')
   const prompt = h('textarea', { class: 'input', rows: '6', placeholder: '', 'data-field': 'prompt' })
   prompt.value = store.state.prompt
-  const promptField = h('label', { class: 'field' }, promptLabel, prompt)
+  const promptField = h('label', { class: 'field prompt-field' }, promptLabel, prompt)
   const systemField = h('label', { class: 'field' }, systemLabel, system)
   const generatedNote = h('p', { class: 'muted small' })
   const takeOver = h('button', { class: 'minibtn', type: 'button' }, 'Edit how each row is shown to the model')
@@ -25,13 +25,14 @@ export function buildInstructionsScreen(store: Store): Screen {
   const more = h('details', { class: 'schema-preview more-options' }, h('summary', {}, 'More options'))
   const previewBox = h('div', { class: 'sheet-preview' })
   const problems = h('p', { class: 'wizard-blocker inline-blocker' })
+  const controls = h('div', { class: 'row' }, takeOver, resetAuto)
 
-  const el = h('section', { class: 'card stage-card' },
+  const el = h('section', { class: 'card stage-card instructions-stage' },
     h('div', { class: 'stage-heading' }, h('h2', {}, 'Instructions'), heading),
     systemField,
     promptField,
     generatedNote,
-    h('div', { class: 'row' }, takeOver, resetAuto),
+    controls,
     more,
     problems,
     previewBox,
@@ -79,6 +80,9 @@ export function buildInstructionsScreen(store: Store): Screen {
 
   function refresh(data: AppData): void {
     const { state } = data
+    // One question: the prompt box takes the height the viewport has and
+    // scrolls inside itself past that; the other flows size to their content.
+    el.classList.toggle('fill', state.flow === 'single')
     // The generated template is shown in the (read-only) textarea.
     if (state.promptAuto && prompt.value !== state.prompt) prompt.value = state.prompt
     const isSheet = state.flow === 'sheet'
@@ -131,6 +135,10 @@ export function buildInstructionsScreen(store: Store): Screen {
     const list = instructionProblems(data)
     problems.hidden = list.length === 0
     problems.textContent = list.join(' · ')
+    // Empty elements keep their margins and borders; take them out of the flow.
+    generatedNote.hidden = generatedNote.textContent === ''
+    controls.hidden = takeOver.hidden && resetAuto.hidden
+    previewBox.hidden = !previewBox.hasChildNodes()
   }
 
   return {
