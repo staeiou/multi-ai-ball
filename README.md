@@ -59,7 +59,7 @@ npm run dev          # http://localhost:5173
 npm run build        # static files in dist/; serve them from any static host
 ```
 
-Requires Node 18 or newer. The build is a static site with no backend. Serve `dist/` from the same origin as the page; nothing is fetched at runtime except the providers you call and OpenRouter's public model list.
+Requires Node 18 or newer. The build is a static site with no backend, with relative asset paths, so it can be served from a domain root or from a sub-path. `.github/workflows/pages.yml` builds it and publishes it to GitHub Pages on every push to `main`. Nothing is fetched at runtime except the providers you call and OpenRouter's public model list.
 
 `npm run sync:models-dev` refreshes the vendored models.dev data (`src/data/models-dev.json`) that describes OpenAI and Anthropic models.
 

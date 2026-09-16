@@ -2,9 +2,9 @@
   "name": "MultAIBall",
   "short_name": "MultAIBall",
   "description": "One prompt, many models, one page.",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#f2f4f8",
   "theme_color": "#2f6fed",
-  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
 }

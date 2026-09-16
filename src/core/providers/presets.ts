@@ -15,7 +15,7 @@ export const PRESETS: readonly ProviderPreset[] = [
     chatPath: '/api/v1/chat/completions',
     modelsPath: '/api/v1/models',
     auth: { kind: 'bearer', envVar: 'OPENROUTER_API_KEY' },
-    headers: { 'HTTP-Referer': 'https://github.com/staeiou/multi-ai-ball', 'X-Title': 'MultAIBall' },
+    headers: { 'HTTP-Referer': 'https://stuartgeiger.com/multiaiball', 'X-Title': 'MultAIBall' },
     outputLengthName: 'max_tokens',
     effortPath: ['reasoning', 'effort'],
     structuredOutput: 'response_format',
