@@ -143,6 +143,10 @@ export function buildFrozenModel(input: BuildInput): FrozenModel {
   } else if (g.structuredOutput.value === true) {
     mergeInto(body, schemaParam(preset.shape, contract.name, contract.schema))
     report.push({ param: formatParam, sent: true, reason: 'model reported to support JSON schema', source: g.structuredOutput.source })
+  } else if (g.jsonObject.value === true && jsonObjectParam(preset.shape)) {
+    // The weaker enforcement the model does have: valid JSON, fields from the prose.
+    mergeInto(body, jsonObjectParam(preset.shape)!)
+    report.push({ param: 'response_format (JSON object)', sent: true, value: 'json_object', reason: 'model reported to take JSON mode but not a schema; the fields come from the instructions', source: g.jsonObject.source })
   } else if (g.structuredOutput.value === false) {
     report.push({ param: formatParam, sent: false, reason: 'model reported not to support JSON schema; prose instructions still sent', source: g.structuredOutput.source })
   } else {

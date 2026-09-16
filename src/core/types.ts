@@ -58,7 +58,12 @@ export interface ModelGuidance {
   temperature: Fact<Tri>
   /** Effort values the model is reported to accept; null = no effort control. */
   effortValues: Fact<string[] | null>
+  /** The model enforces a JSON schema (OpenRouter: `structured_outputs` listed). */
   structuredOutput: Fact<Tri>
+  /** The model has a "valid JSON, shape not enforced" mode (OpenRouter:
+   * `response_format` listed). Two names, two modes; conflating them sent
+   * schemas to models that take only JSON mode (WORKLOG 2026-09-16). */
+  jsonObject: Fact<Tri>
   contextLimit: Fact<number | null>
   outputLimit: Fact<number | null>
   /** USD per token. */

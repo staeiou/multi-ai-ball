@@ -1,8 +1,10 @@
 // Frozen run + rows -> the two user-facing tables and their files.
 //
 //   Long table: one row per call in coordinate order; the analytically regular
-//   artifact. The rendered prompt is not a column: the frozen run plus the
-//   coordinate regenerates it, and the export ships the frozen run alongside.
+//   artifact. The literal request (URL and the exact body string that was
+//   hashed and sent) is a column, regenerated at export time from the frozen
+//   run plus the coordinate; nothing rendered is ever stored per call.
+//   Model report: one row per parameter per model, the check screen's table.
 //   Completed datasets: one table per model and repeat, shaped like the source
 //   sheet, example rows keeping their human codes, target rows filled with the
 //   model's parsed fields. The "finish my spreadsheet" artifact.
@@ -18,7 +20,7 @@ import { coerceCell, discoverUnstackColumns, extractUnstackCell, inferColumnType
 import { columnsWithRole } from './partition'
 import type { Row } from './partition'
 import { presetById } from './providers/presets'
-import { coordinateAt } from './render'
+import { coordinateAt, renderCall } from './render'
 import { responseText } from './run'
 import { totalCalls } from './freeze'
 import type { CallRow, FrozenRun } from './types'
@@ -57,6 +59,8 @@ export const TAIL_COLUMNS: readonly ExportColumn[] = [
   { key: 'thinking', label: 'Reasoning' },
   { key: 'upstream', label: 'Sub-provider' },
   { key: 'bodyHash', label: 'Request body SHA-256' },
+  { key: 'requestUrl', label: 'Request URL' },
+  { key: 'requestBody', label: 'Request body (JSON)' },
   { key: 'bindings', label: 'Bindings (JSON)' },
   { key: 'raw', label: 'Raw response' },
 ]
@@ -92,6 +96,7 @@ export function buildRows(run: FrozenRun, rows: readonly CallRow[]): { columns: 
     const coord = row.coord ?? coordinateAt(run, index)
     const c = run.cases[coord.caseIndex]!
     const model = run.models[coord.modelIndex]!
+    const rendered = renderCall(run, coord)
     const record: ExportRow = {
       case: c.label,
       ordinal: c.ordinal + 1,
@@ -112,6 +117,8 @@ export function buildRows(run: FrozenRun, rows: readonly CallRow[]): { columns: 
       thinking: row.thinking ?? null,
       upstream: row.upstream ?? null,
       bodyHash: row.bodyHash ?? null,
+      requestUrl: rendered.url,
+      requestBody: rendered.bodyString,
       bindings: JSON.stringify(c.bindings),
       raw: row.raw ?? null,
     }
@@ -134,6 +141,43 @@ export function buildRows(run: FrozenRun, rows: readonly CallRow[]): { columns: 
     }
   }
   return { columns, rows: out }
+}
+
+// --- model report -------------------------------------------------------------------
+
+export const MODEL_REPORT_COLUMNS: readonly ExportColumn[] = [
+  { key: 'model', label: 'Model' },
+  { key: 'provider', label: 'Provider' },
+  { key: 'url', label: 'Request URL' },
+  { key: 'param', label: 'Parameter' },
+  { key: 'sent', label: 'Sent' },
+  { key: 'value', label: 'Value' },
+  { key: 'reason', label: 'Why' },
+  { key: 'source', label: 'Source' },
+  { key: 'skeleton', label: 'Body skeleton (JSON)' },
+]
+
+/** What each parameter did for each model and why: the check screen's table,
+ * one row per report line, with the body skeleton the calls were rendered from. */
+export function buildModelReport(run: FrozenRun): { columns: ExportColumn[]; rows: ExportRow[] } {
+  const rows: ExportRow[] = []
+  for (const model of run.models) {
+    const skeleton = JSON.stringify(model.body)
+    for (const line of model.report) {
+      rows.push({
+        model: model.id,
+        provider: presetById(model.provider).label,
+        url: model.url,
+        param: line.param,
+        sent: line.sent,
+        value: line.value === undefined ? null : scalarCell(line.value),
+        reason: line.reason,
+        source: line.source,
+        skeleton,
+      })
+    }
+  }
+  return { columns: [...MODEL_REPORT_COLUMNS], rows }
 }
 
 // --- completed datasets ---------------------------------------------------------

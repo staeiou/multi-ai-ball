@@ -12,7 +12,7 @@ There is no server. Your API key goes from your browser straight to the provider
 
 **Vary a prompt systematically.** Write a prompt with blanks like `{{name}}`, give each blank a list of values, and every combination is asked. Hold a résumé constant and vary the name and hometown.
 
-In every case the app tells you, before you spend anything, exactly how many calls it will make, roughly what they will cost, and what the first request looks like word for word. Afterwards, every answer can be opened to see the exact request that produced it.
+In every case the app tells you, before you spend anything, exactly how many calls it will make, roughly what they will cost, and what the first request looks like word for word. Afterwards, every answer can be opened to see the exact request that produced it, and every export carries that request word for word on the row, with a second sheet saying what each setting did for each model and why.
 
 ## Providers and models
 
@@ -38,7 +38,7 @@ Plus repeats per case, how many calls run at once, retries, and a timeout. Each 
 
 ## Answer fields
 
-Ask for specific fields and each becomes a column: one choice from a list, free text, a whole number, a number, yes/no, or several choices. For a spreadsheet the fields are pre-filled from the columns you are filling in, with the kind guessed from the values already there. The fields are described to the model in plain instructions on every call and enforced as a JSON schema where the provider supports it. Answers that come back as slightly broken JSON are repaired and marked as repaired; answers that cannot be read are marked as such, never silently dropped.
+Ask for specific fields and each becomes a column: one choice from a list, free text, a whole number, a number, yes/no, or several choices. For a spreadsheet the fields are pre-filled from the columns you are filling in, with the kind guessed from the values already there. The fields are described to the model in plain instructions on every call and enforced as a JSON schema where the provider supports it; where a model takes only "valid JSON" mode, that is asked for instead. Answers that come back as slightly broken JSON are repaired and marked as repaired; answers that cannot be read are marked as such, never silently dropped.
 
 ## The Python bundle
 

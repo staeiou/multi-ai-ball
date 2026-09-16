@@ -69,6 +69,20 @@ describe('buildFrozenModel', () => {
     expect((m.body.reasoning as { effort: string }).effort).toBe('low')
   })
 
+  it('auto format: JSON-object mode where the model lists JSON mode but not a schema; nothing where it lists neither', () => {
+    const jsonOnly = { id: 'deepseek/deepseek-r1', guidance: { ...GPT41_LIKE.guidance, structuredOutput: { value: false as const, source: 'openrouter-live' as const }, jsonObject: { value: true as const, source: 'openrouter-live' as const } } }
+    const m = buildFrozenModel({ preset: presetById('openrouter'), baseUrl: 'https://openrouter.ai', model: jsonOnly, shared: SHARED, settings: { extras: {} }, contract: CONTRACT, hasSystem: true })
+    expect(m.body.response_format).toEqual({ type: 'json_object' })
+    expect(m.report.find(r => r.param === 'response_format (JSON object)')?.reason).toMatch(/JSON mode but not a schema/)
+    const neither = { ...jsonOnly, guidance: { ...jsonOnly.guidance, jsonObject: { value: false as const, source: 'openrouter-live' as const } } }
+    const n = buildFrozenModel({ preset: presetById('openrouter'), baseUrl: 'https://openrouter.ai', model: neither, shared: SHARED, settings: { extras: {} }, contract: CONTRACT, hasSystem: true })
+    expect(n.body).not.toHaveProperty('response_format')
+    expect(n.report.find(r => r.param.startsWith('response_format'))?.reason).toMatch(/not to support JSON schema/)
+    // An explicit per-model 'schema' choice still wins over guidance.
+    const forced = buildFrozenModel({ preset: presetById('openrouter'), baseUrl: 'https://openrouter.ai', model: jsonOnly, shared: SHARED, settings: { extras: {}, responseFormat: 'schema' }, contract: CONTRACT, hasSystem: true })
+    expect((forced.body.response_format as { type: string }).type).toBe('json_schema')
+  })
+
   it('extras merge last, override shared controls, and never touch structural keys', () => {
     const m = buildFrozenModel({ preset: presetById('openai'), baseUrl: 'x', model: GPT41_LIKE, shared: SHARED, settings: { extras: { temperature: 0.1, top_p: 0.9, messages: [], model: 'nope' } }, contract: null, hasSystem: false })
     expect(m.body.temperature).toBe(0.1)

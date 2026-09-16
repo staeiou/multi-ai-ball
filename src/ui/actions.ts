@@ -7,7 +7,7 @@ import JSZip from 'jszip'
 import { fetchCatalog, fetchZdrModels } from '../core/catalog'
 import { parseSheetBytes } from '../core/cases'
 import type { SheetWorkerFailure, SheetWorkerResponse } from '../core/sheet.worker'
-import { buildCompletedDatasets, buildRows, download, fileStamp, plainColumns, toCSV, toJSONL, toXLSX, XLSX_MIME } from '../core/export'
+import { buildCompletedDatasets, buildModelReport, buildRows, download, fileStamp, plainColumns, toCSV, toJSONL, toXLSX, XLSX_MIME } from '../core/export'
 import { freezeRun } from '../core/freeze'
 import { presetById } from '../core/providers/presets'
 import { buildBundleZip, ZIP_MIME } from '../core/py'
@@ -383,7 +383,10 @@ export class Actions {
     const stem = `multiaiball-${fileStamp(frozen.frozenAt)}`
     if (kind === 'csv') download(`${stem}.csv`, toCSV(built.rows, built.columns), 'text/csv;charset=utf-8')
     else if (kind === 'jsonl') download(`${stem}.jsonl`, toJSONL(built.rows, built.columns), 'application/x-ndjson')
-    else download(`${stem}.xlsx`, toXLSX([{ name: 'Results', rows: built.rows, columns: built.columns }]), XLSX_MIME)
+    else {
+      const report = buildModelReport(frozen)
+      download(`${stem}.xlsx`, toXLSX([{ name: 'Results', rows: built.rows, columns: built.columns }, { name: 'Models', rows: report.rows, columns: report.columns }]), XLSX_MIME)
+    }
   }
 
   exportCompleted(): void {

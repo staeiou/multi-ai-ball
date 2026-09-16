@@ -108,9 +108,11 @@ export async function runCall(call: RenderedCall, model: FrozenModel, options: C
         return { ...base, status: 'error', httpStatus: response.status, latencyMs, error: read.error, raw }
       }
       if (read.text === null && read.parts.length === 0) {
-        const message = hitOutputLimit(read.finishReason) || read.thinking
+        const message = hitOutputLimit(read.finishReason)
           ? 'No answer: the maximum answer length was used up before the answer (reasoning models think first). Raise the maximum answer length in Run settings.'
-          : 'Provider returned no content.'
+          : read.thinking
+            ? 'No answer: the model put everything in its reasoning and left the answer empty (the reasoning is kept on this row).'
+            : 'Provider returned no content.'
         return { ...base, status: 'error', httpStatus: response.status, latencyMs, error: message, thinking: read.thinking, raw, ...(read.promptTokens !== undefined ? { promptTokens: read.promptTokens } : {}), ...(read.completionTokens !== undefined ? { completionTokens: read.completionTokens } : {}) }
       }
       const costUsd = read.costUsd ?? (read.promptTokens !== undefined && read.completionTokens !== undefined

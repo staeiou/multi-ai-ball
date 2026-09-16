@@ -45,7 +45,7 @@ templates + contract + examples ──freeze──▶  FrozenRun
 | `api.ts` | one call: send the rendered string, retry, read through the shape |
 | `run.ts` | bounded pool over coordinates; pause, cancel, subset (rerun) |
 | `parsers.ts` | built-in parsers, corpus-pinned twin with `parsing.py` |
-| `export.ts` | long table, completed datasets, CSV/JSONL/XLSX |
+| `export.ts` | long table (with the literal request per row, regenerated), model report, completed datasets, CSV/JSONL/XLSX |
 | `py.ts` + `py/runtime/` | the bundle: experiment.json + cases.csv + runtime |
 | `runstore.ts` | IndexedDB: frozen run at freeze, one row per completed call |
 | `cases.ts` | sheet parsing (in `sheet.worker.ts`), Cartesian sweep |
@@ -64,9 +64,12 @@ catalog for OpenRouter's models, Anthropic's `/v1/models` capability tree for
 Anthropic (models.dev for temperature, which the tree lacks), models.dev for
 OpenAI (whose list is ids only), assumed for custom. Guidance decides what the
 shared controls do; it never removes anything the user asked for explicitly,
-and a provider 400 is a result, kept raw. `exceptions.json` is hand-written,
-carries a note and an expiry per entry, and starts empty. There are no
-per-model rules in code. `scripts/probe/` sends the app's own bodies to real
+and a provider 400 is a result, kept raw. OpenRouter's catalog names two
+modes with two names: `structured_outputs` is schema enforcement,
+`response_format` alone is JSON-object mode, and "automatic" sends the
+strongest one the model lists. `exceptions.json` is hand-written, carries a
+note and an expiry per entry, and holds two entries. There are no per-model
+rules in code. `scripts/probe/` sends the app's own bodies to real
 endpoints to answer questions the catalogs cannot.
 
 ## Executable invariants

@@ -70,14 +70,19 @@ export function buildReviewScreen(_store: Store, actions: Actions): Screen {
     )
     models.replaceChildren(...f.models.map((m, index) => {
       const g = m.guidance
-      const fit = g.contextLimit.value ? f.constantBlockTokens + itemTokens <= g.contextLimit.value : null
+      // Providers count the answer budget against the context window, so the
+      // check is prompt plus budget (a 331-character prompt with an 8192 cap
+      // on an 8192-context model 400ed on 2026-09-16).
+      const lengthName = g.outputLengthName ?? presetById(m.provider).outputLengthName
+      const budget = typeof m.body[lengthName] === 'number' ? (m.body[lengthName] as number) : 0
+      const fit = g.contextLimit.value ? f.constantBlockTokens + itemTokens + budget <= g.contextLimit.value : null
       const first = renderCall(f, coordinateAt(f, index * f.repeats))
       const table = h('table', { class: 'report-table' }, h('thead', {}, h('tr', {}, h('th', {}, 'Parameter'), h('th', {}, 'Sent'), h('th', {}, 'Why'), h('th', {}, 'Source'))),
         h('tbody', {}, ...m.report.map(r => h('tr', { class: r.sent ? 'sent' : 'omitted' },
           h('td', { class: 'mono' }, r.param), h('td', {}, r.sent ? (r.value === undefined ? 'yes' : typeof r.value === 'object' ? JSON.stringify(r.value) : String(r.value)) : 'no'), h('td', {}, r.reason), h('td', { class: 'muted small' }, r.source)))))
       return h('details', { class: 'review-model' },
         h('summary', {}, h('strong', {}, m.id), h('span', { class: 'muted small' }, ` · ${presetById(m.provider).label} · `),
-          fit === null ? h('span', { class: 'muted small' }, 'context limit unknown') : fit ? h('span', { class: 'ok-text' }, `fits its ${g.contextLimit.value!.toLocaleString()}-token context`) : h('span', { class: 'preview-warn' }, `may exceed its ${g.contextLimit.value!.toLocaleString()}-token context`)),
+          fit === null ? h('span', { class: 'muted small' }, 'context limit unknown') : fit ? h('span', { class: 'ok-text' }, `prompt and answer budget fit its ${g.contextLimit.value!.toLocaleString()}-token context`) : h('span', { class: 'preview-warn' }, `prompt plus answer budget (${budget.toLocaleString()}) may exceed its ${g.contextLimit.value!.toLocaleString()}-token context`)),
         table,
         h('p', { class: 'muted small' }, `The first call, exactly as it will be sent to ${m.url} (the payload):`),
         h('pre', { class: 'payload-code' }, JSON.stringify(first.body, null, 2)),

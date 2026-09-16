@@ -7,5 +7,20 @@
     "the probe rig (scripts/probe) writes candidates to tmp/, a person promotes.",
     "Empty at launch and allowed to stay empty forever."
   ],
-  "entries": []
+  "entries": [
+    {
+      "provider": "openrouter",
+      "models": ["bytedance-seed/seed-2.0-code"],
+      "guidance": { "structuredOutput": false },
+      "note": "2026-09-16 run (tmp/multiaiball-2026-09-16-21-47-45.xlsx): the catalog lists structured_outputs on its one endpoint (Seed), and a json_schema response_format answered HTTP 400 'The parameter `response_format.type` specified in the request are not valid: `json_schema` is not supported by this model'. JSON-object mode is still listed and untested.",
+      "expiresWhen": "the probe's forced-schema variant answers 2xx for this id"
+    },
+    {
+      "provider": "openrouter",
+      "models": ["google/gemini-2.5-flash-image"],
+      "guidance": { "structuredOutput": false, "jsonObject": false },
+      "note": "2026-09-16 run: the catalog lists structured_outputs and response_format on all four endpoints, and a json_schema response_format answered HTTP 400 from Google AI Studio 'JSON mode is not enabled for this model' (Google: 'The request is not supported by this model'). An image-output model; text answers work without a format parameter.",
+      "expiresWhen": "the probe's forced-schema variant answers 2xx for this id"
+    }
+  ]
 }

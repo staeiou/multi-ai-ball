@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import * as XLSX from 'xlsx'
-import { buildCompletedDatasets, buildRows, EXCEL_CELL_CHUNK, toCSV, toJSONL, toXLSX } from './export'
+import { buildCompletedDatasets, buildModelReport, buildRows, EXCEL_CELL_CHUNK, toCSV, toJSONL, toXLSX } from './export'
 import { freezeRun } from './freeze'
 import { columnsOf, inferPartition } from './partition'
 import { presetById } from './providers/presets'
+import { renderCall } from './render'
 import { GPT41_LIKE, ROLES, ROWS } from './testing/fixtures'
 import type { CallRow, FrozenRun } from './types'
 
@@ -40,6 +41,34 @@ describe('long table', () => {
     const csv = toCSV(rows, columns)
     expect(csv.split('\r\n')).toHaveLength(3)
     expect(toJSONL(rows, columns).split('\n')).toHaveLength(2)
+  })
+
+  it('carries the literal request per row: the URL and the exact body string the call hashed', async () => {
+    const run = await frozen()
+    const { columns, rows } = buildRows(run, [okRow(0, { frame: 'civic', score: 3 })])
+    expect(columns.map(c => c.label)).toEqual(expect.arrayContaining(['Request URL', 'Request body (JSON)']))
+    const expected = renderCall(run, { caseIndex: 0, modelIndex: 0, repeat: 0 })
+    expect(rows[0]!.requestUrl).toBe('x/v1/chat/completions')
+    expect(rows[0]!.requestBody).toBe(expected.bodyString)
+    expect(String(rows[0]!.requestBody)).toContain('Hospital wait times doubled.')
+    expect(String(rows[0]!.requestBody)).not.toContain('{{API_KEY}}')
+  })
+})
+
+describe('model report', () => {
+  it('one row per parameter per model, with the reason, the source and the body skeleton', async () => {
+    const run = await frozen()
+    const { columns, rows } = buildModelReport(run)
+    expect(columns.map(c => c.label)).toEqual(['Model', 'Provider', 'Request URL', 'Parameter', 'Sent', 'Value', 'Why', 'Source', 'Body skeleton (JSON)'])
+    expect(rows.length).toBe(run.models[0]!.report.length)
+    const length = rows.find(r => r.param === 'max_completion_tokens')!
+    expect(length.sent).toBe(true)
+    expect(length.value).toBe(64)
+    expect(length.model).toBe('gpt-4.1-mini')
+    expect(String(length.skeleton)).toContain('{{PROMPT}}')
+    const format = rows.find(r => String(r.param).startsWith('response_format'))!
+    expect(format.sent).toBe(false)
+    expect(format.reason).toBe('not requested')
   })
 })
 

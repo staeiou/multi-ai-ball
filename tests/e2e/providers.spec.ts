@@ -142,10 +142,10 @@ test.describe('OpenRouter (mocked)', () => {
     const seen = await mockProviders(page)
     await toModels(page, 'Route me')
     await connect(page, 'openrouter', 'sk-or-test')
-    // :batch hidden always; :free hidden by default -> two rows.
-    await expect(page.locator('.pick-col .model-row')).toHaveCount(2)
-    await page.uncheck('.model-filters input[type=checkbox] >> nth=0')
+    // :batch hidden always; :free hidden by default -> three rows.
     await expect(page.locator('.pick-col .model-row')).toHaveCount(3)
+    await page.uncheck('.model-filters input[type=checkbox] >> nth=0')
+    await expect(page.locator('.pick-col .model-row')).toHaveCount(4)
     await pick(page, 'openai/gpt-5')
     await pick(page, 'anthropic/claude-sonnet-4.5')
     await page.click('button.wizard-next')

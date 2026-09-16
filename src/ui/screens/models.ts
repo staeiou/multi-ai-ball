@@ -285,6 +285,7 @@ export function buildModelsScreen(store: Store, actions: Actions): Screen {
       `temperature: ${g.temperature.value === true ? 'accepted' : g.temperature.value === false ? 'only its default' : 'unknown'} (${g.temperature.source})`,
       `effort: ${g.effortValues.value ? g.effortValues.value.join('/') : 'none'} (${g.effortValues.source})`,
       `JSON schema: ${g.structuredOutput.value === true ? 'yes' : g.structuredOutput.value === false ? 'no' : 'unknown'} (${g.structuredOutput.source})`,
+      `JSON mode: ${g.jsonObject.value === true ? 'yes' : g.jsonObject.value === false ? 'no' : 'unknown'} (${g.jsonObject.source})`,
       `context: ${g.contextLimit.value ? g.contextLimit.value.toLocaleString() : '?'} · output ceiling: ${g.outputLimit.value ? g.outputLimit.value.toLocaleString() : '?'}`,
     ]
     return parts.join(' · ')

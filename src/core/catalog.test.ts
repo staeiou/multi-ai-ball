@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { ANTHROPIC_MODELS, OPENAI_MODELS, OPENROUTER_MODELS } from '../../tests/e2e/fixtures/catalogs'
 import { parseCatalog } from './catalog'
+import { manualCatalogModel } from './providers/guidance'
 import { presetById } from './providers/presets'
 
 describe('parseCatalog', () => {
@@ -29,7 +30,7 @@ describe('parseCatalog', () => {
 
   it('OpenRouter: its own catalog is the only authority; batch routes hidden; free flagged; per-model cap spelling', () => {
     const models = parseCatalog(presetById('openrouter'), OPENROUTER_MODELS)
-    expect(models.map(m => m.id)).toEqual(['anthropic/claude-sonnet-4.5', 'meta-llama/llama-3.3-70b-instruct:free', 'openai/gpt-5'])
+    expect(models.map(m => m.id)).toEqual(['anthropic/claude-sonnet-4.5', 'deepseek/deepseek-r1', 'meta-llama/llama-3.3-70b-instruct:free', 'openai/gpt-5'])
     const gpt5 = models.find(m => m.id === 'openai/gpt-5')!
     expect(gpt5.guidance.temperature).toEqual({ value: false, source: 'openrouter-live' })
     expect(gpt5.guidance.effortValues.value).toEqual(['minimal', 'low', 'medium', 'high'])
@@ -38,5 +39,28 @@ describe('parseCatalog', () => {
     const sonnet = models.find(m => m.id === 'anthropic/claude-sonnet-4.5')!
     expect(sonnet.guidance.temperature.value).toBe(true) // the union lists it; no cross-router inference
     expect(models.find(m => m.id.endsWith(':free'))!.free).toBe(true)
+  })
+
+  it('OpenRouter: structured_outputs means schema, response_format alone means JSON mode', () => {
+    const models = parseCatalog(presetById('openrouter'), OPENROUTER_MODELS)
+    const r1 = models.find(m => m.id === 'deepseek/deepseek-r1')!
+    expect(r1.guidance.structuredOutput).toEqual({ value: false, source: 'openrouter-live' })
+    expect(r1.guidance.jsonObject).toEqual({ value: true, source: 'openrouter-live' })
+    const gpt5 = models.find(m => m.id === 'openai/gpt-5')!
+    expect(gpt5.guidance.structuredOutput.value).toBe(true)
+    expect(gpt5.guidance.jsonObject.value).toBe(true)
+    const llama = models.find(m => m.id.endsWith(':free'))!
+    expect(llama.guidance.structuredOutput.value).toBe(false)
+    expect(llama.guidance.jsonObject.value).toBe(false)
+  })
+
+  it('exceptions.json overrides the catalog for the models it names, with the override source', () => {
+    const seed = manualCatalogModel('openrouter', 'bytedance-seed/seed-2.0-code')
+    expect(seed.guidance.structuredOutput).toEqual({ value: false, source: 'override' })
+    expect(seed.guidance.jsonObject.source).toBe('unknown')
+    const nano = manualCatalogModel('openrouter', 'google/gemini-2.5-flash-image')
+    expect(nano.guidance.structuredOutput).toEqual({ value: false, source: 'override' })
+    expect(nano.guidance.jsonObject).toEqual({ value: false, source: 'override' })
+    expect(manualCatalogModel('openrouter', 'openai/gpt-5').guidance.structuredOutput.source).toBe('unknown')
   })
 })

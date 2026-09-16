@@ -24,6 +24,7 @@ interface GuidanceValues {
   temperature: ModelGuidance['temperature']['value']
   effortValues: ModelGuidance['effortValues']['value']
   structuredOutput: ModelGuidance['structuredOutput']['value']
+  jsonObject: ModelGuidance['jsonObject']['value']
   contextLimit: ModelGuidance['contextLimit']['value']
   outputLimit: ModelGuidance['outputLimit']['value']
   pricing: ModelGuidance['pricing']['value']
@@ -34,6 +35,7 @@ export function guidance(overrides: Partial<GuidanceValues> = {}): ModelGuidance
     temperature: { value: overrides.temperature ?? 'unknown', source: 'models-dev' },
     effortValues: { value: overrides.effortValues ?? null, source: 'models-dev' },
     structuredOutput: { value: overrides.structuredOutput ?? 'unknown', source: 'models-dev' },
+    jsonObject: { value: overrides.jsonObject ?? 'unknown', source: 'models-dev' },
     contextLimit: { value: overrides.contextLimit ?? null, source: 'models-dev' },
     outputLimit: { value: overrides.outputLimit ?? null, source: 'models-dev' },
     pricing: { value: overrides.pricing ?? null, source: 'models-dev' },

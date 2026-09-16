@@ -61,6 +61,14 @@ export const OPENROUTER_MODELS = {
       supported_parameters: ['max_tokens', 'temperature', 'top_p', 'stop'],
     },
     {
+      // Lists response_format (JSON mode) but not structured_outputs (schema).
+      id: 'deepseek/deepseek-r1', name: 'DeepSeek: R1', context_length: 64000,
+      pricing: { prompt: '0.0000007', completion: '0.0000025' },
+      top_provider: { context_length: 64000, max_completion_tokens: 16000, is_moderated: false },
+      supported_parameters: ['frequency_penalty', 'include_reasoning', 'max_tokens', 'presence_penalty', 'reasoning', 'response_format', 'seed', 'stop', 'temperature', 'top_k', 'top_p'],
+      reasoning: { mandatory: true },
+    },
+    {
       id: 'openai/gpt-5:batch', name: 'OpenAI: GPT-5 (batch)', context_length: 400000,
       pricing: { prompt: '0.0000006', completion: '0.000005' },
       top_provider: { context_length: 400000, max_completion_tokens: 128000, is_moderated: true },

@@ -56,6 +56,19 @@ describe('RunController', () => {
     }
   })
 
+  it('an empty answer with reasoning and a normal stop is reported as reasoning-only, not as a length limit', async () => {
+    const run = await frozen()
+    const reply = (finish: string) => new Response(JSON.stringify({ choices: [{ finish_reason: finish, message: { role: 'assistant', content: null, reasoning: 'thought about it' } }], usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 } }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => reply('stop')))
+    const stopped = await new RunController(run, 'k').start([0])
+    expect(stopped.rows[0]!.status).toBe('error')
+    expect(stopped.rows[0]!.error).toMatch(/put everything in its reasoning/)
+    expect(stopped.rows[0]!.thinking).toBe('thought about it')
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => reply('length')))
+    const cut = await new RunController(run, 'k').start([0])
+    expect(cut.rows[0]!.error).toMatch(/maximum answer length was used up/)
+  })
+
   it('substitutes the key into headers and drops the auth header when the key is empty', async () => {
     const run = await frozen()
     const headers: Array<Record<string, string>> = []

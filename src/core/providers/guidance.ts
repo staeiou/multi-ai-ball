@@ -37,6 +37,7 @@ interface ExceptionEntry {
     temperature: Tri
     effortValues: string[] | null
     structuredOutput: Tri
+    jsonObject: Tri
     contextLimit: number | null
     outputLimit: number | null
   }>
@@ -53,6 +54,7 @@ export function unknownGuidance(): ModelGuidance {
     temperature: fact<Tri>('unknown', 'unknown'),
     effortValues: fact<string[] | null>(null, 'unknown'),
     structuredOutput: fact<Tri>('unknown', 'unknown'),
+    jsonObject: fact<Tri>('unknown', 'unknown'),
     contextLimit: fact<number | null>(null, 'unknown'),
     outputLimit: fact<number | null>(null, 'unknown'),
     pricing: fact<{ prompt: number; completion: number } | null>(null, 'unknown'),
@@ -101,6 +103,8 @@ export function guidanceFromModelsDev(vendor: 'openai' | 'anthropic', id: string
     temperature: fact<Tri>(record.temperature ?? 'unknown', record.temperature == null ? 'unknown' : 'models-dev'),
     effortValues: fact(effortFromModelsDev(record), 'models-dev'),
     structuredOutput: fact<Tri>(record.structured_output ?? 'unknown', record.structured_output == null ? 'unknown' : 'models-dev'),
+    // models.dev has no JSON-mode flag; only the schema flag.
+    jsonObject: fact<Tri>('unknown', 'unknown'),
     contextLimit: fact(record.limit.context, record.limit.context == null ? 'unknown' : 'models-dev'),
     outputLimit: fact(record.limit.output, record.limit.output == null ? 'unknown' : 'models-dev'),
     pricing: fact(pricingFromModelsDev(record), record.cost ? 'models-dev' : 'unknown'),
@@ -146,7 +150,12 @@ export function catalogModelFromOpenRouter(entry: JsonRecord): CatalogModel | nu
     guidance: {
       temperature,
       effortValues: fact(effortValues, 'openrouter-live'),
-      structuredOutput: fact<Tri>(supported.includes('structured_outputs') || supported.includes('response_format'), 'openrouter-live'),
+      // Two names, two modes: `structured_outputs` is schema enforcement,
+      // `response_format` alone is JSON-object mode. A schema sent to a model
+      // listing only the second 404s under require_parameters (15 of 15 such
+      // models in the 2026-09-16 run of 188).
+      structuredOutput: fact<Tri>(supported.includes('structured_outputs'), 'openrouter-live'),
+      jsonObject: fact<Tri>(supported.includes('response_format'), 'openrouter-live'),
       contextLimit: fact(typeof top.context_length === 'number' ? top.context_length : typeof entry.context_length === 'number' ? entry.context_length : null, 'openrouter-live'),
       outputLimit: fact(typeof top.max_completion_tokens === 'number' ? top.max_completion_tokens : null, 'openrouter-live'),
       pricing: fact(Number.isFinite(prompt) && Number.isFinite(completion) && prompt >= 0 && completion >= 0 ? { prompt, completion } : null, 'openrouter-live'),
@@ -182,6 +191,8 @@ export function catalogModelFromAnthropic(entry: JsonRecord): CatalogModel | nul
       temperature: fromModelsDev.temperature,
       effortValues: fact(effortValues && effortValues.length ? effortValues : null, 'anthropic-live'),
       structuredOutput: fact<Tri>(typeof structured.supported === 'boolean' ? structured.supported : 'unknown', 'anthropic-live'),
+      // The Messages endpoint has no JSON-object mode (shapes.ts jsonObjectParam).
+      jsonObject: fact<Tri>(false, 'assumed'),
       contextLimit: fact(typeof entry.max_input_tokens === 'number' ? entry.max_input_tokens : fromModelsDev.contextLimit.value, typeof entry.max_input_tokens === 'number' ? 'anthropic-live' : fromModelsDev.contextLimit.source),
       outputLimit: fact(typeof entry.max_tokens === 'number' ? entry.max_tokens : fromModelsDev.outputLimit.value, typeof entry.max_tokens === 'number' ? 'anthropic-live' : fromModelsDev.outputLimit.source),
       pricing: fromModelsDev.pricing,
@@ -217,6 +228,7 @@ export function applyExceptions(provider: ProviderId, model: CatalogModel): Cata
   if (o.temperature !== undefined) g.temperature = fact(o.temperature, 'override')
   if (o.effortValues !== undefined) g.effortValues = fact(o.effortValues, 'override')
   if (o.structuredOutput !== undefined) g.structuredOutput = fact(o.structuredOutput, 'override')
+  if (o.jsonObject !== undefined) g.jsonObject = fact(o.jsonObject, 'override')
   if (o.contextLimit !== undefined) g.contextLimit = fact(o.contextLimit, 'override')
   if (o.outputLimit !== undefined) g.outputLimit = fact(o.outputLimit, 'override')
   return { ...model, guidance: g }
