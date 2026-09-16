@@ -34,6 +34,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The unit suite includes the Python parity check (the bundle's runtime
+      # must build the same request bodies as the browser); it needs the
+      # runtime's own requirements plus json_repair for the parser twin.
+      - name: Install the bundle runtime's Python requirements
+        run: python3 -m pip install --quiet httpx aiometer aiolimiter tenacity tqdm aiosqlite json_repair
+
       - name: Typecheck, unit tests, build
         run: |
           npm run typecheck
