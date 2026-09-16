@@ -23,8 +23,10 @@ export function buildReviewScreen(_store: Store, actions: Actions): Screen {
   const el = h('section', { class: 'card stage-card review-stage' },
     h('div', { class: 'stage-heading' }, h('h2', {}, 'Check & run'), h('p', {}, 'Nothing has been sent yet. Below is exactly what will be, so you can check before spending anything.')),
     summary,
-    models,
+    // The button sits above the per-model details: with hundreds of models
+    // those run for screens, and the summary already says what will be spent.
     h('div', { class: 'review-action' }, run, why),
+    models,
   )
   let frozen: FrozenRun | null = null
   let freezing = false
@@ -62,7 +64,7 @@ export function buildReviewScreen(_store: Store, actions: Actions): Screen {
     const itemTokens = Math.max(0, ...f.cases.slice(0, 200).map(c => naiveTokenCount(f.itemTemplate + Object.values(c.bindings).join(' '))))
     summary.replaceChildren(
       item('Cases', f.source ? `${f.cases.length.toLocaleString()} rows to run (${f.partition.examples.length} worked examples${f.partition.ambiguous.length ? `, ${f.partition.ambiguous.length} skipped` : ''})` : `${f.cases.length.toLocaleString()}`),
-      item('Models', f.models.map(m => m.id).join(', ')),
+      item('Models', f.models.length <= 8 ? f.models.map(m => m.id).join(', ') : `${f.models.length} (listed below)`),
       item('Calls', `${calls.toLocaleString()} (${f.cases.length} × ${f.models.length} × ${f.repeats} repeat${f.repeats === 1 ? '' : 's'})`),
       item('Estimated cost', unknown === calls ? 'unknown (no prices for these models)' : `~${formatUsd(low)}–${formatUsd(high)}${unknown ? ` plus ${unknown} calls with no price` : ''}`),
       item('Prompt size', `${f.constantBlockTokens.toLocaleString()} tokens shared by every call (examples + output format) + up to ~${itemTokens.toLocaleString()} per case`),

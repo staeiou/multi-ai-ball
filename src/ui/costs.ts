@@ -31,13 +31,15 @@ export function modelCost(model: CatalogModel, inputs: CostInputs): number | nul
   return modelRunRange(model, inputs)?.high ?? null
 }
 
-export function costSummary(model: CatalogModel, inputs: CostInputs): string {
+/** The two cost facts for a model row: what this run would cost (the one a
+ * person decides on) and the list price per million tokens. */
+export function costParts(model: CatalogModel, inputs: CostInputs): { run: string | null; perMillion: string | null } {
   const range = modelRunRange(model, inputs)
   const pricing = model.guidance.pricing.value
-  const parts: string[] = []
-  if (range) parts.push(`~${formatUsd(range.low)}–${formatUsd(range.high)} run`)
-  if (pricing) parts.push(`$${(pricing.prompt * 1e6).toFixed(2)}/$${(pricing.completion * 1e6).toFixed(2)} per 1M`)
-  return parts.join(' · ') || 'price unknown'
+  return {
+    run: range ? `~${formatUsd(range.low)}–${formatUsd(range.high)} run` : null,
+    perMillion: pricing ? `$${(pricing.prompt * 1e6).toFixed(2)}/$${(pricing.completion * 1e6).toFixed(2)} per 1M` : null,
+  }
 }
 
 export function sortByCost(list: CatalogModel[], inputs: CostInputs): CatalogModel[] {

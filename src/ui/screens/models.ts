@@ -9,7 +9,7 @@ import { PRESETS, presetById } from '../../core/providers/presets'
 import type { CatalogModel, ProviderId, ResponseFormatChoice } from '../../core/types'
 import { loadRecent } from '../../state'
 import type { Actions } from '../actions'
-import { costInputs, costSummary, modelCost, sortByCost } from '../costs'
+import { costInputs, costParts, modelCost, sortByCost } from '../costs'
 import { h } from '../dom'
 import { caseCount, catalogCurrent, previewConstantBlock, visibleCatalog } from '../model'
 import type { AppData, Store } from '../store'
@@ -152,7 +152,7 @@ export function buildModelsScreen(store: Store, actions: Actions): Screen {
   function row(model: CatalogModel | undefined, id: string, side: 'available' | 'selected', data: AppData): HTMLElement {
     const arrow = h('span', { class: 'model-arrow', 'aria-hidden': 'true' }, side === 'available' ? '→' : '←')
     const label = h('span', { class: 'model-id' }, id)
-    const cost = h('span', { class: 'model-cost' }, model ? costSummary(model, inputsFor(data)) : 'not in the loaded list')
+    const cost = h('span', { class: 'model-cost' }, ...costCells(model, data))
     const button = h('button', { class: `model-row ${side}`, type: 'button', title: side === 'available' ? `Add ${id}` : `Remove ${id}` }, ...(side === 'available' ? [label, cost, arrow] : [arrow, label, cost]))
     button.addEventListener('click', () => select(id, side === 'available'))
     if (side === 'selected') {
@@ -161,6 +161,18 @@ export function buildModelsScreen(store: Store, actions: Actions): Screen {
       return h('div', { class: 'model-row-wrap' }, button, gear)
     }
     return button
+  }
+
+  /** Run cost in bold (the number a person decides on), list price plain. */
+  function costCells(model: CatalogModel | undefined, data: AppData): Array<HTMLElement | string> {
+    if (!model) return ['not in the loaded list']
+    const parts = costParts(model, inputsFor(data))
+    if (!parts.run && !parts.perMillion) return ['price unknown']
+    const cells: Array<HTMLElement | string> = []
+    if (parts.run) cells.push(h('strong', {}, parts.run))
+    if (parts.run && parts.perMillion) cells.push(' · ')
+    if (parts.perMillion) cells.push(parts.perMillion)
+    return cells
   }
 
   function renderAvailable(data: AppData): void {
