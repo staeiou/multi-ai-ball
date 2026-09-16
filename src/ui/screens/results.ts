@@ -68,7 +68,10 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
   search.addEventListener('input', () => renderTable(current()))
   statusFilter.addEventListener('change', () => renderTable(current()))
   modelFilter.addEventListener('change', () => renderTable(current()))
-  tableWrap.addEventListener('scroll', () => { if (virtual) scheduleWindow() })
+  tableWrap.addEventListener('scroll', () => {
+    if (virtual) scheduleWindow()
+    if (!programmedScroll && store.session.running) followLive = Math.abs(tableWrap.scrollTop - liveBoundary) < ROW_HEIGHT * 3
+  })
   el.querySelector('.saved-runs-box')!.addEventListener('toggle', ev => { if ((ev.target as HTMLDetailsElement).open) void renderSaved() })
 
   function current(): AppData { return { state: store.state, session: store.session } }
@@ -96,6 +99,9 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
   let tbody: HTMLTableSectionElement | null = null
   let windowStart = -1
   let windowScheduled = false
+  let followLive = true
+  let programmedScroll = false
+  let liveBoundary = 0
 
   function renderTable(data: AppData): void {
     const { frozen, rows } = data.session
@@ -115,6 +121,11 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
       const c = frozen.cases[row.coord.caseIndex]!
       return `${c.label} ${model.id} ${responseText(row)} ${row.error ?? ''} ${JSON.stringify(row.parsed ?? '')}`.toLowerCase().includes(q)
     })
+    const liveOrder = data.session.running && !q && sf === 'all' && !mf
+    if (liveOrder) {
+      const rank = (row: CallRow): number => row.status === 'ok' || row.status === 'error' ? 0 : row.status === 'running' ? 1 : 2
+      visibleRows.sort((a, b) => rank(a.row) - rank(b.row) || a.index - b.index)
+    }
     visibleColumns = parsedColumns(frozen, rows)
     virtual = visibleRows.length > VIRTUAL_ABOVE
     const multi = frozen.models.length > 1
@@ -128,6 +139,15 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
     windowStart = -1
     if (virtual) { tableWrap.scrollTop = scrollTop; renderWindow() }
     else for (const v of visibleRows) tbody.append(rowElement(frozen, v))
+    if (liveOrder && followLive) {
+      const complete = visibleRows.filter(v => v.row.status === 'ok' || v.row.status === 'error').length
+      requestAnimationFrame(() => {
+        liveBoundary = Math.max(0, complete * ROW_HEIGHT - ROW_HEIGHT * 3)
+        programmedScroll = true
+        tableWrap.scrollTop = liveBoundary
+        programmedScroll = false
+      })
+    }
   }
 
   function scheduleWindow(): void {
@@ -253,6 +273,7 @@ export function buildResultsScreen(store: Store, actions: Actions): Screen {
 
   function refresh(data: AppData): void {
     const { frozen, running, paused, rows, statusLine, sourceRows } = data.session
+    if (!running) followLive = true
     renderTally(data)
     status.textContent = statusLine
     pause.hidden = !running || paused
