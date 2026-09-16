@@ -65,7 +65,13 @@ function init(): void {
       const gate = stageGate(step, { state: store.state, session: store.session })
       return { ok: gate.ok, why: gate.why, canRun: false }
     },
-    onStep: step => { screens[step]?.refresh({ state: store.state, session: store.session }) },
+    onStep: step => {
+      // The models stage remains mounted while other steps are shown. Keep its
+      // secret field out of password-manager heuristics until it is visible.
+      const keyInput = document.querySelector<HTMLInputElement>('[data-field="api-key"]')
+      if (keyInput) keyInput.type = step === 3 ? 'password' : 'text'
+      screens[step]?.refresh({ state: store.state, session: store.session })
+    },
   })
 
   const applyTheme = (): void => { document.documentElement.dataset.theme = store.state.dark ? 'dark' : 'light' }

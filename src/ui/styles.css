@@ -787,7 +787,7 @@ textarea.input {
 .final-table-wrap { overflow: auto; max-height: min(66vh, 760px); }.final-table { min-width: 1000px; width: 100%; table-layout: fixed; }.final-table th:last-child { width: 64px; }.final-table .result-long { width: 30%; }.final-table td { white-space: normal; overflow: hidden; }.final-table .raw-cell { text-align: center; }.raw-coin { padding: 1px 6px; font-size: 11px; }
 .live-table .reasoning-cell { min-width: 200px; max-width: 320px; }.thinking-text { border-left: 3px solid var(--border-strong); padding-left: 10px; color: var(--muted); font-size: 12.5px; }.threshold-input { width: 84px; }
 .payload-dialog { width: min(980px, calc(100vw - 100px)); height: min(78vh, 800px); max-width: none; max-height: none; padding: 0; border: 1px solid var(--border); border-radius: 10px; color: var(--text); background: var(--card); box-shadow: 0 24px 70px #0006; }.payload-dialog::backdrop { background: #0008; }.payload-dialog-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 13px 16px; border-bottom: 1px solid var(--border); }.payload-code { box-sizing: border-box; width: 100%; height: calc(100% - 54px); margin: 0; padding: 16px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; font: 12px/1.55 var(--mono); background: var(--bg); color: var(--text); }
-.sheet-table-wrap { overflow: auto; max-width: 100%; border: 1px solid var(--border); border-radius: 6px; max-height: 310px; }
+.sheet-table-wrap { min-width: 0; overflow: auto; max-width: 100%; border: 1px solid var(--border); border-radius: 6px; max-height: 310px; }
 .sheet-table { border-collapse: collapse; table-layout: fixed; min-width: 100%; width: max-content; }
 .sheet-table th, .sheet-table td { max-width: 190px; width: 190px; padding: 6px 9px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
 .sheet-table th { position: sticky; top: 0; z-index: 1; background: var(--bg); text-align: left; }
@@ -1085,7 +1085,8 @@ textarea.input {
 .sweep-box { display: grid; gap: 10px; margin-bottom: 10px; }
 .sweep-list { display: grid; gap: 10px; }
 .sweep-var { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); }
-.sheet-section { display: grid; gap: 10px; margin-bottom: 10px; }
+.sheet-section { display: grid; min-width: 0; gap: 10px; margin-bottom: 10px; }
+.restored-sheet-notice { display: flex; align-items: center; justify-content: flex-start; gap: 0.5rem; padding: 8px 10px; border-left: 3px solid var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--text); font-size: 12.5px; }
 .roles-table { border-collapse: collapse; width: 100%; font-size: 13px; }
 .roles-table th, .roles-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
 .roles-table .role-select { width: 100%; max-width: 420px; }
@@ -1126,7 +1127,7 @@ textarea.mono { font-family: var(--mono); font-size: 12.5px; }
 .result-model { max-width: 320px; }
 
 /* --- 2026-09-15 newbie overhaul --- */
-.data-preview { margin: 8px 0; }
+.data-preview { min-width: 0; margin: 8px 0; }
 .question-box { margin: 14px 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
 .question-box h3 { margin: 0 0 4px; font-size: 15px; }
 .column-checklist { display: grid; gap: 4px; margin-top: 8px; }

@@ -172,6 +172,32 @@ test.describe('a spreadsheet', () => {
     await expect(page.locator('.field-entry')).toHaveCount(1)
     await expect(page.locator('.field-entry').first().locator('input').first()).toHaveValue('sentiment')
   })
+
+  test('identifies a spreadsheet restored from a previous visit and can clear it', async ({ page }) => {
+    await loadSheet(page)
+    await page.reload()
+    await expect(page.locator('.data-preview .sheet-table tbody tr')).toHaveCount(5)
+    await expect(page.locator('.restored-sheet-notice')).toContainText('restored from a previous visit')
+    await page.click('.restored-sheet-notice button:has-text("Clear it")')
+    await expect(page.locator('.restored-sheet-notice')).toBeHidden()
+    await expect(page.locator('.data-preview .sheet-table')).toHaveCount(0)
+    await expect(page.locator('button.wizard-next')).toBeDisabled()
+    await page.reload()
+    await expect(page.locator('.data-preview .sheet-table')).toHaveCount(0)
+  })
+})
+
+test('keeps the provider secret out of password-manager heuristics until the Models step', async ({ page }) => {
+  const key = page.locator('[data-field="api-key"]')
+  await expect(key).toHaveAttribute('type', 'text')
+  await expect(key).toHaveAttribute('autocomplete', 'off')
+  await expect(key).toHaveAttribute('data-bwignore', 'true')
+  await expect(key).toHaveAttribute('data-1p-ignore', 'true')
+  await expect(key).toHaveAttribute('data-lpignore', 'true')
+  await next(page)
+  await page.fill('textarea[data-field="prompt"]', 'Classify this request')
+  await next(page, 2)
+  await expect(key).toHaveAttribute('type', 'password')
 })
 
 test.describe('resilience', () => {

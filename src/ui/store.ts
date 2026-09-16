@@ -20,6 +20,8 @@ export interface Session {
   sheetSource: { name: string; bytes: number; sha256: string } | null
   sheetError: string | null
   loadingSheet: boolean
+  /** True only when the sheet was brought back from a prior browser visit. */
+  restoredSheet: boolean
   /** User edits to the inferred partition; null = inferred from the sheet. */
   partitionOverride: Partition | null
   /** The run in progress or last completed. */
@@ -53,6 +55,7 @@ export function defaultSession(state: PersistedState): Session {
     sheetSource: null,
     sheetError: null,
     loadingSheet: false,
+    restoredSheet: false,
     partitionOverride: null,
     runId: null,
     frozen: null,

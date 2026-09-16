@@ -23,6 +23,7 @@ export function buildDataScreen(store: Store, actions: Actions): Screen {
   sheetInput.hidden = true
   const uploadBtn = h('button', { class: 'btn primary', type: 'button' }, 'Upload a spreadsheet…')
   const sheetFacts = h('span', { class: 'muted small' })
+  const restoredSheetNotice = h('div', { class: 'restored-sheet-notice' })
   const previewBox = h('div', { class: 'data-preview' })
   const readBox = h('div', { class: 'question-box' })
   const fillBox = h('div', { class: 'question-box' })
@@ -31,7 +32,7 @@ export function buildDataScreen(store: Store, actions: Actions): Screen {
   const sweepBox = h('div', { class: 'sweep-box' })
   const problems = h('p', { class: 'wizard-blocker inline-blocker' })
 
-  const sheetSection = h('div', { class: 'sheet-section' }, h('div', { class: 'row' }, uploadBtn, sheetInput, sheetFacts), previewBox, readBox, fillBox, keptBox, partitionBox)
+  const sheetSection = h('div', { class: 'sheet-section' }, restoredSheetNotice, h('div', { class: 'row' }, uploadBtn, sheetInput, sheetFacts), previewBox, readBox, fillBox, keptBox, partitionBox)
   const el = h('section', { class: 'card stage-card' },
     h('div', { class: 'stage-heading' }, h('h2', {}, 'Your data'), h('p', {}, 'What are you asking the models about?')),
     flowTabs,
@@ -43,6 +44,8 @@ export function buildDataScreen(store: Store, actions: Actions): Screen {
 
   uploadBtn.addEventListener('click', () => sheetInput.click())
   sheetInput.addEventListener('change', () => { const f = sheetInput.files?.[0]; if (f) void actions.loadSheet(f); sheetInput.value = '' })
+  const clearRestoredSheet = h('button', { class: 'minibtn danger', type: 'button' }, 'Clear it')
+  clearRestoredSheet.addEventListener('click', () => void actions.clearSheet())
 
   const FLOWS: Array<[Flow, string, string]> = [
     ['single', 'One question', 'Ask the same thing of several models and compare their answers side by side.'],
@@ -65,6 +68,13 @@ export function buildDataScreen(store: Store, actions: Actions): Screen {
   function renderSheet(data: AppData): void {
     if (data.state.flow !== 'sheet') return
     const { sheet, sheetError, loadingSheet } = data.session
+    restoredSheetNotice.hidden = !data.session.restoredSheet || !sheet
+    if (!restoredSheetNotice.hidden) {
+      restoredSheetNotice.replaceChildren(
+        h('span', {}, 'This spreadsheet was restored from a previous visit.'),
+        clearRestoredSheet,
+      )
+    }
     sheetFacts.textContent = loadingSheet ? 'Reading…' : sheetError ?? (sheet ? `${sheet.name}: ${sheet.rows.length.toLocaleString()} rows, ${sheet.columns.length} columns` : 'Excel or CSV (also TSV, JSON, JSONL). The first row should hold the column names.')
     if (!sheet) { previewBox.replaceChildren(); readBox.replaceChildren(); fillBox.replaceChildren(); keptBox.textContent = ''; partitionBox.replaceChildren(); sheetKey = ''; return }
     const { rows, roles } = currentRows(data)

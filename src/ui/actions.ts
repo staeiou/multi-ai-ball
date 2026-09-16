@@ -13,7 +13,7 @@ import { presetById } from '../core/providers/presets'
 import { buildBundleZip, ZIP_MIME } from '../core/py'
 import { sha256Hex } from '../core/render'
 import { RunController, pendingRows } from '../core/run'
-import { appendRow, deleteRun, listRuns, loadCurrentSheet, loadRun, newRunId, saveCurrentSheet, saveRun } from '../core/runstore'
+import { appendRow, clearCurrentSheet, deleteRun, listRuns, loadCurrentSheet, loadRun, newRunId, saveCurrentSheet, saveRun } from '../core/runstore'
 import { countTokens } from '../core/tokenizer'
 import type { CallRow, FrozenRun } from '../core/types'
 import { pushRecent, saveKey } from '../state'
@@ -92,6 +92,7 @@ export class Actions {
         d.session.sheetSource = { name: file.name, bytes: parsed.bytes, sha256: parsed.sha256 }
         d.session.partitionOverride = null
         d.session.loadingSheet = false
+        d.session.restoredSheet = false
         // A fresh sheet gets fresh guesses; the user changes them by ticking boxes.
         d.state.roles = guessRoles(parsed.rows, parsed.columns)
         d.state.flow = 'sheet'
@@ -103,6 +104,22 @@ export class Actions {
     } catch (error) {
       this.store.update(d => { d.session.loadingSheet = false; d.session.sheetError = `Could not read the file: ${(error as Error).message}` })
     }
+  }
+
+  /** Forget the sheet restored from or saved for a previous visit. Settings and
+   * completed runs remain available; only sheet-specific authoring is reset. */
+  async clearSheet(): Promise<void> {
+    await clearCurrentSheet()
+    this.store.update(d => {
+      d.session.sheet = null
+      d.session.sheetSource = null
+      d.session.sheetError = null
+      d.session.partitionOverride = null
+      d.session.restoredSheet = false
+      d.state.roles = {}
+      d.state.promptAuto = true
+      d.state.contractAuto = true
+    })
   }
 
   setRole(column: string, role: ColumnRole): void {
@@ -244,6 +261,7 @@ export class Actions {
       this.store.update(d => {
         d.session.sheet = { name: sheet.name, columns: sheet.columns, rows: sheet.rows }
         d.session.sheetSource = sheet.source
+        d.session.restoredSheet = true
         applyGuesses(d)
       })
     }

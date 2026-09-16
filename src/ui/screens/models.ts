@@ -22,7 +22,20 @@ export function buildModelsScreen(store: Store, actions: Actions): Screen {
   const customBase = h('input', { class: 'input', placeholder: 'Base URL, e.g. http://localhost:11434 or https://your.llm.example' })
   customBase.value = store.state.customBase
   const customBaseField = h('label', { class: 'field' }, h('span', {}, 'Base URL'), customBase)
-  const keyInput = h('input', { class: 'input', type: 'password', placeholder: 'API key', autocomplete: 'new-password' })
+  // Password managers tend to scan every mounted screen, including hidden
+  // wizard stages. This starts as text and app.ts promotes it to password only
+  // while this stage is visible; the provider key is never a login credential.
+  const keyInput = h('input', {
+    class: 'input',
+    type: 'text',
+    name: 'provider-api-key',
+    'data-field': 'api-key',
+    placeholder: 'API key',
+    autocomplete: 'off',
+    'data-bwignore': 'true',
+    'data-1p-ignore': 'true',
+    'data-lpignore': 'true',
+  })
   keyInput.value = store.session.apiKey
   const remember = h('input', { type: 'checkbox' })
   remember.checked = store.state.keyRemember
